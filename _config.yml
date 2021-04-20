@@ -108,7 +108,7 @@ permalink: /posts/:title/
 collections:
   tabs:
     output: true
-    sort_by: order
+    sort_by: order 
 
 
 defaults:
