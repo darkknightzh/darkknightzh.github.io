@@ -116,4 +116,4 @@ DEPENDENCIES
 BUNDLED WITH
    2.1.4
 
-bundle lock --add-platform ruby
+bundle lock --add-platform ruby 
