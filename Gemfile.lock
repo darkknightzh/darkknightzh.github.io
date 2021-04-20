@@ -1,3 +1,5 @@
+bundle lock --add-platform ruby 
+
 PATH
   remote: .
   specs:
@@ -116,4 +118,4 @@ DEPENDENCIES
 BUNDLED WITH
    2.1.4
 
-bundle lock --add-platform ruby 
+
