@@ -17,18 +17,18 @@ timezone: Asia/Shanghai
 # --------------------------
 title: darkknightzh                          # the main title
 
-tagline: A text-focused Jekyll theme   # it will display as the sub-title
+tagline: 忘记一个人，从忘记那个声音开始   # it will display as the sub-title
 
 description: >-                        # used by seo meta and the atom feed
-  A minimal, portfolio, sidebar,
-  bootstrap Jekyll theme with responsive web design
-  and focuses on text presentation.
+  仅供学习交流使用，错误之处在所难免，欢迎指正.
 
 # fill in the protocol & hostname for your site, e.g., 'https://username.github.io'
 url: 'https://darkknightzh.github.io/'
 
+author: darkknightzh                  # change to your full name
+
 github:
-  username: github_username             # change to your github username
+  username: darkknightzh             # change to your github username
 
 twitter:
   username: twitter_username            # change to your twitter username
@@ -36,15 +36,15 @@ twitter:
 social:
   # Change to your full name.
   # It will be displayed as the default author of the posts and the copyright owner in the Footer
-  name: your_full_name
-  email: example@doamin.com             # change to your email address
-  links:
-    # The first element serves as the copyright owner's link
-    - https://twitter.com/username      # change to your twitter homepage
-    - https://github.com/username       # change to your github homepage
-    # Uncomment below to add more social links
-    # - https://www.facebook.com/username
-    # - https://www.linkedin.com/in/username
+  name: darkknightzh
+#   email: example@doamin.com             # change to your email address
+#   links:
+#     # The first element serves as the copyright owner's link
+#     - https://twitter.com/username      # change to your twitter homepage
+#     - https://github.com/username       # change to your github homepage
+#     # Uncomment below to add more social links
+#     # - https://www.facebook.com/username
+#     # - https://www.linkedin.com/in/username
 
 google_site_verification: google_meta_tag_verification # change to your verification string
 # --------------------------
@@ -67,7 +67,7 @@ google_analytics:
 #     light  - Use the light color scheme
 #     dark   - Use the dark color scheme
 #
-theme_mode:   # [light|dark]
+theme_mode:  light # [light|dark]
 
 # The CDN endpoint for images.
 # Notice that once it is assigned, the CDN url
@@ -77,7 +77,8 @@ theme_mode:   # [light|dark]
 img_cdn: ''
 
 # the avatar on sidebar, support local or CORS resources
-avatar: https://cdn.jsdelivr.net/gh/cotes2020/chirpy-images/commons/avatar.jpg
+# avatar: https://cdn.jsdelivr.net/gh/cotes2020/chirpy-images/commons/avatar.jpg
+avatar: http://image5.uuu9.com/news/ueditor/20201215/5fd82c35aa6b4_550.jpg
 
 # boolean type, the global switch for ToC in posts.
 toc: true
@@ -88,9 +89,17 @@ disqus:
 
 paginate: 10
 
+# markdown: kramdown
+# markdown: CommonMarkGhPages
+
+# kramdown:
+#   math_engine: mathjax
+
+
 # ------------ The following options are not recommended to be modified ------------------
 
 kramdown:
+  parse_block_html: true
   syntax_highlighter: rouge
   syntax_highlighter_opts:   # Rouge Options › https://github.com/jneen/rouge#full-options
     css_class: highlight
@@ -169,3 +178,22 @@ jekyll-archives:
   permalinks:
     tag: /tags/:name/
     category: /categories/:name/
+
+# Valine评论系统开关
+# Valine.
+# You can get your appid and appkey from https://leancloud.app
+# more info please open https://valine.js.org
+valine:
+  enable: true
+  appid:  7DUQTBuCCKLjnutJOa6ko5cn-MdYXbMMI # your leancloud app id
+  appkey: lxmthTQ8ESa2HrVQiIVyXtYo # your leancloud app key
+  notify: true # mail notifier , https://github.com/xCss/Valine/wiki，v1.4.0+ 已废弃
+  verify: true # Verification code，v1.4.0+ 已废弃
+  placeholder:  # comment box placeholder
+  avatar:   # gravatar style
+  guest_info: 昵称,邮件,网址 # custom comment header
+  pageSize: 10 # pagination size
+  # path: window.location.pathname #  v1.4.0+不要使用参数“app_key: 'LHvLGcwcauE5B2JpMxJ3lbtF',”
+  recordIP: true # 是否记录评论者IP
+  enableQQ: false # 是否启用昵称框自动获取QQ昵称和QQ头像, 默认关闭
+
