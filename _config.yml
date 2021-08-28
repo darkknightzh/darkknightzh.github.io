@@ -78,7 +78,8 @@ img_cdn: ''
 
 # the avatar on sidebar, support local or CORS resources
 # avatar: https://cdn.jsdelivr.net/gh/cotes2020/chirpy-images/commons/avatar.jpg
-avatar: http://image5.uuu9.com/news/ueditor/20201215/5fd82c35aa6b4_550.jpg
+# avatar: http://image5.uuu9.com/news/ueditor/20201215/5fd82c35aa6b4_550.jpg
+avatar: avatar.jpg
 
 # boolean type, the global switch for ToC in posts.
 toc: true
