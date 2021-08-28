@@ -3,9 +3,21 @@
 -->
 
 <div id="panel-wrapper" class="col-xl-3 pl-2 text-muted topbar-down">
+  
+  {% if page.tags.size > 0 %}
+    <div class="post-tags">
+      <span>{{- site.data.label.panel.tags | default: 'Tags' -}}</span>
+      <i class="fa fa-tags fa-fw mr-1"></i>
+      {% for tag in page.tags %}
+      <a href="{{ site.baseurl }}/tags/{{ tag | slugify | url_encode }}/"
+        class="post-tag no-text-decoration" >
+        {{- tag -}}
+      </a>
+      {% endfor %}
+      </div>
+    {% endif %}
 
   <div class="access">
-
   {% include update-list.html %}
 
   {% if update_list.size > 0 %}
