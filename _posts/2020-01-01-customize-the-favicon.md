@@ -2,8 +2,7 @@
 title: Customize the Favicon
 # author: Cotes Chung
 date: 2020-01-01 12:00:00 +0800
-categories: [test]
-tags: [demo]
+tags: demo
 toc: false
 ---
 

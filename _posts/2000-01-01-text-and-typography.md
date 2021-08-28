@@ -2,8 +2,7 @@
 title: Text and Typography
 # author: Cotes Chung
 date: 2000-01-01 00:00:00 +0800
-categories: [test]
-tags: [demo]
+tags: demo
 math: true
 mermaid: true
 image: https://cdn.jsdelivr.net/gh/cotes2020/chirpy-images/commons/devices-mockup.png

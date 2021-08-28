@@ -2,8 +2,7 @@
 title: Writing a New Post
 # author: Cotes Chung
 date: 2000-01-01 00:00:00 +0800
-categories: [test]
-tags: [demo]
+tags: demo
 ---
 
 ## Naming and Path

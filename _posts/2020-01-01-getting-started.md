@@ -2,8 +2,7 @@
 title: Getting Started
 # author: Cotes Chung
 date: 2020-01-01 00:00:00 +0800
-categories: [test]
-tags: [demo]
+tags: demo
 pin: true
 ---
 

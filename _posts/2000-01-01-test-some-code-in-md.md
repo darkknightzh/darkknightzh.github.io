@@ -2,8 +2,7 @@
 layout: post
 title:  "test some code in md"
 date:   2000-01-01 00:00:00 +0800
-categories: [test]
-tags: [demo]
+tags: demo
 ---
 
 
