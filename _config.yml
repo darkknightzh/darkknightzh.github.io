@@ -170,7 +170,6 @@ jekyll-archives:
     tag: tag
   permalinks:
     tag: /tags/:name/
-    category: /categories/:name/
 
 # Valine评论系统开关
 # Valine.
