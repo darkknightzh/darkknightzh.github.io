@@ -167,7 +167,6 @@ exclude:
 jekyll-archives:
   enabled: [tags]
   layouts:
-    category: category
     tag: tag
   permalinks:
     tag: /tags/:name/
