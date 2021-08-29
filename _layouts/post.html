@@ -87,11 +87,11 @@ layout: default
     {% include post-nav.html %}
 
     {% if site.valine.enable %}
-      {% include lean_cloud_count.html %}
+      <!-- {% include lean_cloud_count.html %}
         <div>
           <span id="{{ page.url }}" class="leancloud_visitors" data-flag-title="{{ page.title }}">
           <a href="#">Pageviews:<span class="leancloud-visitors-count"></span>  times</a></span>
-        </div>
+        </div> -->
 
       {% include valine_comments.html %}
     {% endif %}
