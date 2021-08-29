@@ -30,21 +30,11 @@ author: darkknightzh                  # change to your full name
 github:
   username: darkknightzh             # change to your github username
 
-twitter:
-  username: twitter_username            # change to your twitter username
-
 social:
   # Change to your full name.
   # It will be displayed as the default author of the posts and the copyright owner in the Footer
   name: darkknightzh
 #   email: example@doamin.com             # change to your email address
-#   links:
-#     # The first element serves as the copyright owner's link
-#     - https://twitter.com/username      # change to your twitter homepage
-#     - https://github.com/username       # change to your github homepage
-#     # Uncomment below to add more social links
-#     # - https://www.facebook.com/username
-#     # - https://www.linkedin.com/in/username
 
 google_site_verification: google_meta_tag_verification # change to your verification string
 # --------------------------
@@ -63,7 +53,6 @@ google_analytics:
 # on the bottom left of the sidebar.
 #
 # Available options:
-#
 #     light  - Use the light color scheme
 #     dark   - Use the dark color scheme
 #
@@ -72,7 +61,6 @@ theme_mode:  light # [light|dark]
 # The CDN endpoint for images.
 # Notice that once it is assigned, the CDN url
 # will be added to all image (site avatar & posts' images) paths starting with '/'
-#
 # e.g. 'https://cdn.com'
 img_cdn: ''
 
@@ -82,13 +70,7 @@ avatar: /assets/img/avatar.png
 # boolean type, the global switch for ToC in posts.
 toc: true
 
-# disqus:
-#   comments: false  # boolean type, the global switch for posts comments.
-#   shortname: ''    # Fill with your Disqus shortname. › https://help.disqus.com/en/articles/1717111-what-s-a-shortname
-
 paginate: 10
-
-# markdown: kramdown
 
 # ------------ The following options are not recommended to be modified ------------------
 
