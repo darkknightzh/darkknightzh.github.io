@@ -9,7 +9,7 @@
   {% if page.tags.size > 0 %}
     <div class="post-tags">
     <span>{{- site.data.label.panel.tags | default: 'Tags' -}}</span>
-    <i class="fa fa-tags fa-fw mr-1"></i>
+    <div class="d-flex flex-wrap mt-3 mb-1 mr-3">
     {% for tag in page.tags %}
       <a href="{{ site.baseurl }}/tags/{{ tag | slugify | url_encode }}/"
       class="post-tag no-text-decoration" >
@@ -17,6 +17,7 @@
     </a>
     {% endfor %}
     </div>
+  </div>
   {% endif %}
 
   {% include update-list.html %}
