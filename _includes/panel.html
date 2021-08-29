@@ -17,11 +17,11 @@
       </div>
     {% endif %}
 
+    
   <div class="access">
+
   {% include update-list.html %}
-
   {% if update_list.size > 0 %}
-
     <div id="access-lastmod" class="post">
       <span>{{- site.data.label.panel.lastmod | default: 'Recent Update' -}}</span>
       <ul class="post-content pl-0 pb-1 ml-1 mt-2">
@@ -39,7 +39,6 @@
   {% endif %}
 
   {% include trending-tags.html %}
-
   {% if trending_tags.size > 0 %}
     <div id="access-tags">
       <span>{{- site.data.label.panel.trending_tags | default: 'Trending Tags' -}}</span>
