@@ -1,181 +1,178 @@
 ---
 layout: post
-title:  "markdown!"
-date:   2020-01-01 00:00:00 +0800
+title:  "语法"
+# author: Cotes Chung
+date:   2021-8-30 15:50:00 +0800
 tags: demo
+pin: true
 ---
 
-# Markdown Elements
+# 文本
 
 Text can be **bold**, _italic_, or ~~strikethrough~~. [Links](https://github.com) should be blue with no underlines (unless hovered over).
 
-There should be whitespace between paragraphs. There should be whitespace between paragraphs. There should be whitespace between paragraphs. There should be whitespace between paragraphs.
-
-There should be whitespace between paragraphs. There should be whitespace between paragraphs. There should be whitespace between paragraphs. There should be whitespace between paragraphs.
-
-> There should be no margin above this first sentence.
->
-> Blockquotes should be a lighter gray with a gray border along the left side.
->
-> There should be no margin below this final sentence.
-
-# Header 1
-
-This is a normal paragraph following a header. Bacon ipsum dolor sit amet t-bone doner shank drumstick, pork belly porchetta chuck sausage brisket ham hock rump pig. Chuck kielbasa leberkas, pork bresaola ham hock filet mignon cow shoulder short ribs biltong.
-
+# Header 1（一级标题下面默认带横线）
 ## Header 2
-
-> This is a blockquote following a header. Bacon ipsum dolor sit amet t-bone doner shank drumstick, pork belly porchetta chuck sausage brisket ham hock rump pig. Chuck kielbasa leberkas, pork bresaola ham hock filet mignon cow shoulder short ribs biltong.
-
 ### Header 3
-
-```
-This is a code block following a header.
-```
-
 #### Header 4
-
-- This is an unordered list following a header.
-- This is an unordered list following a header.
-- This is an unordered list following a header.
-
 ##### Header 5
-
-1. This is an ordered list following a header.
-2. This is an ordered list following a header.
-3. This is an ordered list following a header.
-
 ###### Header 6
 
-| What    | Follows  |
-| ------- | -------- |
-| A table | A header |
-| A table | A header |
-| A table | A header |
+---
+
+上下均有一条横线  3个及其以上的*-_，但彼此之间不能混用
 
 ---
 
-There's a horizontal rule above and below this.
+换1行
 
----
+<br>
 
-Here is an unordered list:
+### Ordered list
+1. Firstly
+2. Secondly
 
-- Salt-n-Pepa
-- Bel Biv DeVoe
-- Kid 'N Play
+### Unordered list
+- Chapter 1
+	- Setcion 1
+      - Paragraph 1
+- Chapter 2
+	- Setcion 2
 
-And an ordered list:
+### Task list
+- [ ] TODO
+- [x] Completed
+- Hold on
+- [ ] Defeat `COVID-19`
+  - [x] Vaccine production
+  - [ ] People smile again
 
-1. Michael Jackson
-2. Michael Bolton
-3. Michael Bublé
-
-And an unordered task list:
-
-- [x] Create a sample markdown document
-- [x] Add task lists to it
-- [ ] Take a vacation
-
-And a "mixed" task list:
-
-- [ ] Steal underpants
-- ?
-- [ ] Profit!
-
-And a nested list:
-
-- Jackson 5
-  - Michael
-  - Tito
-  - Jackie
-  - Marlon
-  - Jermaine
-- TMNT
-  - Leonardo
-  - Michelangelo
-  - Donatello
-  - Raphael
-
-Definition lists can be used with HTML syntax. Definition terms are bold and italic.
+### dict
 
 <dl>
     <dt>Name</dt>
     <dd>Godzilla</dd>
-    <dt>Born</dt>
-    <dd>1952</dd>
-    <dt>Birthplace</dt>
-    <dd>Japan</dd>
-    <dt>Color</dt>
-    <dd>Green</dd>
 </dl>
 
----
+### ref1 aa bb
 
-Tables should have bold headings and alternating shaded rows.
+对于 [**网址显示名字**](https://github.com/cotes2020/jekyll-theme-chirpy/fork)
 
-| Artist          | Album          | Year |
-| --------------- | -------------- | ---- |
-| Michael Jackson | Thriller       | 1982 |
-| Prince          | Purple Rain    | 1984 |
-| Beastie Boys    | License to Ill | 1986 |
+### ref2 (optional)
 
-If a table is too wide, it should condense down and/or scroll horizontally.
+对于 [_ref1 aa bb_](#ref1-aa-bb), 正常字体 **加粗**  `红色字体`
 
-<!-- prettier-ignore-start -->
+### 网址
+<http://localhost:4000>
 
-| Artist            | Album           | Year | Label       | Awards   | Songs     |
-|-------------------|-----------------|------|-------------|----------|-----------|
-| Michael Jackson   | Thriller        | 1982 | Epic Records | Grammy Award for Album of the Year, American Music Award for Favorite Pop/Rock Album, American Music Award for Favorite Soul/R&B Album, Brit Award for Best Selling Album, Grammy Award for Best Engineered Album, Non-Classical | Wanna Be Startin' Somethin', Baby Be Mine, The Girl Is Mine, Thriller, Beat It, Billie Jean, Human Nature, P.Y.T. (Pretty Young Thing), The Lady in My Life |
-| Prince            | Purple Rain     | 1984 | Warner Brothers Records | Grammy Award for Best Score Soundtrack for Visual Media, American Music Award for Favorite Pop/Rock Album, American Music Award for Favorite Soul/R&B Album, Brit Award for Best Soundtrack/Cast Recording, Grammy Award for Best Rock Performance by a Duo or Group with Vocal | Let's Go Crazy, Take Me With U, The Beautiful Ones, Computer Blue, Darling Nikki, When Doves Cry, I Would Die 4 U, Baby I'm a Star, Purple Rain |
-| Beastie Boys      | License to Ill  | 1986 | Mercury Records | noawardsbutthistablecelliswide | Rhymin & Stealin, The New Style, She's Crafty, Posse in Effect, Slow Ride, Girls, (You Gotta) Fight for Your Right, No Sleep Till Brooklyn, Paul Revere, Hold It Now, Hit It, Brass Monkey, Slow and Low, Time to Get Ill |
+<http://127.0.0.1:4000>
 
-<!-- prettier-ignore-end -->
+<br>
 
----
+# 代码
 
-Code snippets like `var foo = "bar";` can be shown inline.
-
-Also, `this should vertically align` ~~`with this`~~ ~~and this~~.
-
-Code can also be shown in a block element.
+This is an example of `Inline Code`.
 
 ```
-var foo = "bar";
+Long, single-line code blocks should not wrap. 
 ```
 
-Code can also use syntax highlighting.
+> This is a blockquote following a header.
 
-```javascript
-var foo = "bar";
+> There should be no margin above this first sentence.
+> Blockquotes should be a lighter gray with a gray border along the left side.
+>
+> There should be no margin below this final sentence.
+
+### 代码折叠
+<details>
+
+```python
+import numpy 
+print("Hello, World!");
+```
+</details>
+
+### 代码不折叠
+```python
+import numpy 
+print("bbbb!");
 ```
 
-```
-Long, single-line code blocks should not wrap. They should horizontally scroll if they are too long. This line should be long enough to demonstrate this.
-```
-
-```javascript
-var foo =
-  "The same thing is true for code with syntax highlighting. A single line of code should horizontally scroll if it is really long.";
+```matlab
+a=5
+b=6
+c=a+b
 ```
 
-Inline code inside table cells should still be distinguishable.
+{% highlight console linenos %}
+  $ env |grep SHELL
+  SHELL=/usr/local/bin/bash
+  PYENV_SHELL=bash
+{% endhighlight %}
 
-| Language   | Code               |
-| ---------- | ------------------ |
-| Javascript | `var foo = "bar";` |
-| Ruby       | `foo = "bar"`      |
-
----
-
-Small images should be shown at their actual size.
-
-![Octocat](https://github.githubassets.com/images/icons/emoji/octocat.png)
-
-Large images should always scale down and fit in the content container.
-
-![Branching](https://guides.github.com/activities/hello-world/branching.png)
-
+```shell
+if [ $? -ne 0 ]; then
+    echo "The command was not successful.";
+fi;
 ```
-This is the final element on the page and there should be no margin below this.
+
+```terminal
+$ mkdir folder
+$ git clone https://github.com/USERNAME/USERNAME.github.io.git -b master --single-branch
 ```
+
+<br>
+
+# 图片
+
+![1](/assets/post/2000-01-01-text-and-typography/1.jpg){: width="100"}
+_图片1 中心对齐_
+
+
+
+图片位置（不要设置，排版出问题）：{: .normal}{: .left}{: .right}
+
+图片标题：以下划线开头和结尾
+
+图片宽度：{: width="400"}
+
+Once you specify the position of an image, it is forbidden to add the image caption
+
+<br>
+
+# 表格
+
+| Artist            | 居中对齐           | Year | Label       | 左对齐   | 右对齐     |
+|-------------------|:-----------------:|------|-------------|:---------|----------:|
+| `var foo = "bar";`  |Thriller        | 1982 | Epic Records | Grammy Award for Album of the Year / Rock Album, American | Wanna Be |
+| `*.PNG`             | ✓                                 | ✗           |  done |     |  ss |
+
+<br>
+
+# 公式
+
+$$\begin{aligned}
+  & \phi(x,y) = \phi \left(\sum_{i=1}^n x_ie_i, \sum_{j=1}^n y_je_j \right)
+  = \sum_{i=1}^n \sum_{j=1}^n x_i y_j \phi(e_i, e_j) = \\
+  & (x_1, \ldots, x_n) \left( \begin{array}{ccc}
+      \phi(e_1, e_1) & \cdots & \phi(e_1, e_n) \\
+      \vdots & \ddots & \vdots \\
+      \phi(e_n, e_1) & \cdots & \phi(e_n, e_n)
+    \end{array} \right)
+  \left( \begin{array}{c}
+      y_1 \\
+      \vdots \\
+      y_n
+    \end{array} \right)
+\end{aligned}$$
+
+行间公式：
+$$ \sum_{n=1}^\infty 1/n^2 = \frac{\pi^2}{6} $$
+
+行内公式：
+When $(a \ne 0)$, there are two solutions to $(ax^2 + bx + c = 0)$ and they are
+
+$$ x = {-b \pm \sqrt{b^2-4ac} \over 2a} $$
+
+
