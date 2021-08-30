@@ -47,13 +47,6 @@ Text can be **bold**, _italic_, or ~~strikethrough~~. [Links](https://github.com
   - [x] Vaccine production
   - [ ] People smile again
 
-### dict
-
-<dl>
-    <dt>Name</dt>
-    <dd>Godzilla</dd>
-</dl>
-
 ### ref1 aa bb
 
 对于 [**网址显示名字**](https://github.com/cotes2020/jekyll-theme-chirpy/fork)
@@ -161,7 +154,8 @@ $$\begin{aligned}
     \end{array} \right)
 \end{aligned}$$
 
-行间公式：
+行间公式（需要回车）：
+
 $$ \sum_{n=1}^\infty 1/n^2 = \frac{\pi^2}{6} $$
 
 行内公式：
