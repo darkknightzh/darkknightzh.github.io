@@ -68,3 +68,29 @@ Text can be **bold**, _italic_, or ~~strikethrough~~. [Links](https://github.com
 <http://127.0.0.1:4000>
 
 <br>
+
+# 图片
+
+![1](/assets/post/2000-01-01-text-and-typography/1.jpg){: width="100"}
+_图片1 中心对齐_
+
+
+
+图片位置（不要设置，排版出问题）：{: .normal}{: .left}{: .right}
+
+图片标题：以下划线开头和结尾
+
+图片宽度：{: width="400"}
+
+Once you specify the position of an image, it is forbidden to add the image caption
+
+<br>
+
+# 表格
+
+| Artist            | 居中对齐           | Year | Label       | 左对齐   | 右对齐     |
+|-------------------|:-----------------:|------|-------------|:---------|----------:|
+| `var foo = "bar";`  |Thriller        | 1982 | Epic Records | Grammy Award for Album of the Year / Rock Album, American | Wanna Be |
+| `*.PNG`             | ✓                                 | ✗           |  done |     |  ss |
+
+<br>
