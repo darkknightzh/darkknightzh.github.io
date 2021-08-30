@@ -69,6 +69,28 @@ Text can be **bold**, _italic_, or ~~strikethrough~~. [Links](https://github.com
 
 <br>
 
+# 代码
+
+This is an example of `Inline Code`.
+
+```
+Long, single-line code blocks should not wrap. 
+```
+
+> This is a blockquote following a header.
+
+> There should be no margin above this first sentence.
+> Blockquotes should be a lighter gray with a gray border along the left side.
+>
+> There should be no margin below this final sentence.
+
+```terminal
+$ mkdir folder
+$ git clone https://github.com/USERNAME/USERNAME.github.io.git -b master --single-branch
+```
+
+<br>
+
 # 图片
 
 ![1](/assets/post/2000-01-01-text-and-typography/1.jpg){: width="100"}
