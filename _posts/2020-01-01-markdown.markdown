@@ -83,6 +83,29 @@ Long, single-line code blocks should not wrap.
 > Blockquotes should be a lighter gray with a gray border along the left side.
 >
 > There should be no margin below this final sentence.
+### 代码不折叠
+```python
+import numpy 
+print("bbbb!");
+```
+
+```matlab
+a=5
+b=6
+c=a+b
+```
+
+{% highlight console linenos %}
+  $ env |grep SHELL
+  SHELL=/usr/local/bin/bash
+  PYENV_SHELL=bash
+{% endhighlight %}
+
+```shell
+if [ $? -ne 0 ]; then
+    echo "The command was not successful.";
+fi;
+```
 
 ```terminal
 $ mkdir folder
