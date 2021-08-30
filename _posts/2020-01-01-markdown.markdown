@@ -17,3 +17,54 @@ Text can be **bold**, _italic_, or ~~strikethrough~~. [Links](https://github.com
 #### Header 4
 ##### Header 5
 ###### Header 6
+
+---
+
+上下均有一条横线  3个及其以上的*-_，但彼此之间不能混用
+
+---
+
+换1行
+
+<br>
+
+### Ordered list
+1. Firstly
+2. Secondly
+
+### Unordered list
+- Chapter 1
+	- Setcion 1
+      - Paragraph 1
+- Chapter 2
+	- Setcion 2
+
+### Task list
+- [ ] TODO
+- [x] Completed
+- Hold on
+- [ ] Defeat `COVID-19`
+  - [x] Vaccine production
+  - [ ] People smile again
+
+### dict
+
+<dl>
+    <dt>Name</dt>
+    <dd>Godzilla</dd>
+</dl>
+
+### ref1 aa bb
+
+对于 [**网址显示名字**](https://github.com/cotes2020/jekyll-theme-chirpy/fork)
+
+### ref2 (optional)
+
+对于 [_ref1 aa bb_](#ref1-aa-bb), 正常字体 **加粗**  `红色字体`
+
+### 网址
+<http://localhost:4000>
+
+<http://127.0.0.1:4000>
+
+<br>
