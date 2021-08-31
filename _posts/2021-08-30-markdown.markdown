@@ -1,11 +1,15 @@
 ---
 layout: post
-title:  "基本语法"
+title:  "markdown基本语法"
 # author: Cotes Chung
 date:   2021-8-30 15:50:00 +0800
 tags: demo
 pin: true
 ---
+
+说明：
+
+该文仅用于写文档时参考格式。
 
 # 文本
 
