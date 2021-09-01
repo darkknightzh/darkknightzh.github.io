@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "EANet Beyond Self-attention: External Attention using Two Linear Layers for Visual Tasks"
-date:   2021-8-18 18:43:00 +0800
+date:   2021-08-18 18:43:00 +0800
 tags: [deep learning, algorithm, transformers]
 pin: true
 math: true

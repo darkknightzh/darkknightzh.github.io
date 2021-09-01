@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "DETR End-to-End Object Detection with Transformers(代码未添加)"
-date:   2021-8-21 09:23:00 +0800
+date:   2021-08-21 09:23:00 +0800
 tags: [deep learning, algorithm, transformers]
 pin: true
 math: true
@@ -46,7 +46,7 @@ $$\tilde{y}=\left\{ { { {\tilde{y}}}_{i}} \right\}_{i=1}^{N}$$
 $$\varnothing $$
 （代表没有目标）填充成大小同样为N的集合。为了找到这两个集合间二分图的最大匹配结果，需要找到一个包含N个元素的序列
 $$\sigma \in { {S}_{N}}$$
-（论文中为 ，打不出来该字母） ，使得公式1损失最小：
+（论文中为![b1](/assets/post/2021-08-21-DETR/b1.png) ，打不出来该字母） ，使得公式1损失最小：
 
 $$\hat{\sigma }=\underset{\sigma \in { {S}_{N}}}{\mathop \arg \min }\,\sum\limits_{i}^{N}{ { {L}_{match}}\left( { {y}_{i}},{ { {\hat{y}}}_{\sigma \left( i \right)}} \right)}  \tag{1}$$
 
@@ -113,8 +113,10 @@ $$H,W=\frac{ { {H}_{0}}}{32},\frac{ { {W}_{0}}}{32}$$
 
 **transformer编码器**：首先使用1*1卷积将输入特征通道从C降低到d维，从而得到新的特征
 $${ {z}_{0}}\in { {\mathbb{R}}^{d\times H\times W}}$$
-，由于编码器需要序列作为输入，因而将输入${ {z}_{0}}$的空间方向转换成1维，从而得到
-$$d\times HW$$
+，由于编码器需要序列作为输入，因而将输入
+$${ {z}_{0}}$$
+的空间方向转换成1维，从而得到
+$$d \times HW$$
 维的输入特征。每个编码器层都使用标准的结构，切包含多头自注意力模块和前行神经网络（FFN）模块。由于transformer结构具有置换不变性，因而将固定位置编码添加到每个注意力层的输入中。补充材料给出网络的详细定义，这与<https://arxiv.org/abs/1706.03762>中的描述相同。
 
 **transformer解码器**：解码器使用transformer标准结构，使用N个d维的多头自注意力和编码器-解码器注意力机制进行变换。该文和原始transformer的区别是，该模型在每个解码器层并行解码N个目标，而原作者<https://arxiv.org/abs/1706.03762>使用自回归模型一次预测一个元素的输出。不熟悉相关概念的读者可参见补充材料。由于解码器也具有置换不变性，N个输入特征必须均不相同，这样才能得到不同的结果。这些输入特征学习的是位置编码，我们称作object queries，和编码器类似，将他们添加到每个注意力层的输入中。N个object queries通过解码器变换到输出特征，而后在通过前向神经网络（FFN，下面介绍）独立解码成目标框的坐标和目标类别，得到N个最终的预测结果。对这些特征使用自注意力和编码器-解码器注意力，模型能够使用目标之间的成对关系，同事能够使用整个图像的信息来预测目标。
@@ -136,7 +138,9 @@ $$\varnothing $$
 ## A.1 多头注意力层
 
 注意力机制和<https://arxiv.org/abs/1808.04444>一致，除了位置编码和<https://arxiv.org/abs/1911.03584>一致。
-多头：有M个头且通道数为d的多头注意力机制如下（$d'=\frac{d}{M}$，下标给出了矩阵/张量大小。注意，原论文中此处为公式3）：
+多头：有M个头且通道数为d的多头注意力机制如下（
+$$d'=\frac{d}{M}$$
+，下标给出了矩阵/张量大小。注意，原论文中此处为公式3）：
 
 ![a1](/assets/post/2021-08-21-DETR/a1.png){: width="400"}
 
@@ -188,12 +192,10 @@ $${ {P}_{kv}}\in { {\mathbb{R}}^{d\times { {N}_{kv}}}}$$
 
 $$\left[ Q;K;V \right]=\left[ T_{1}^{'}\left( { {X}_{q}}+{ {P}_{q}} \right);T_{2}^{'}\left( { {X}_{kv}}+{ {P}_{kv}} \right);T_{3}^{'}{ {X}_{kv}} \right] \tag{9}$$
 
-其中
-$$T'$$
-为
+其中T'为
 $$T_{1}^{'},T_{2}^{'},T_{3}^{'}$$
 的拼接。注意力权重（attention weights）
-$$\alpha $$
+$${\alpha }$$
 通过queries和keys点乘并通过softmax得到，这样query sequence的每个元素都会和key-value sequence的所有元素相关（i为query的索引，j为key-value的索引。注意，原论文中此处为公式8）
 
 $${ {\alpha }_{i,j}}=\frac{ { {e}^{\frac{1}{\sqrt{d'}}Q_{i}^{T}{ {K}_{j}}}}}{ { {Z}_{i}}}\text{ ,    }\text{ }{ {Z}_{i}}\text{=}\sum\limits_{j=1}^{ { {N}_{kv}}}{ { {e}^{\frac{1}{\sqrt{d'}}Q_{i}^{T}{ {K}_{j}}}}} \tag{10}$$
@@ -238,7 +240,7 @@ $$\hat{m}$$
 $${ {L}_{DICE}}\left( m,\hat{m} \right)=1-\frac{2m\sigma \left( {\hat{m}} \right)+1}{\sigma \left( {\hat{m}} \right)+m+1} \tag{13}$$
 
 其中
-$$\sigma $$
+$${\sigma }$$
 为sigmoid函数。该损失通过目标数量进行归一化。
 
 ## A.3 详细结构

@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "markdown基本语法"
-date:   2021-8-30 15:50:00 +0800
+date:   2021-08-30 15:50:00 +0800
 tags: demo
 pin: true
 math: true
