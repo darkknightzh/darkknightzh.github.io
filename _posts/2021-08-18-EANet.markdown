@@ -1,0 +1,240 @@
+---
+layout: post
+title:  "EANet Beyond Self-attention: External Attention using Two Linear Layers for Visual Tasks"
+date:   2021-8-18 18:43:00 +0800
+tags: [deep learning, algorithm]
+pin: true
+math: true
+---
+
+<style> h1 { border-bottom: none } </style>
+
+转载请注明出处：
+
+<https://darkknightzh.github.io/posts/markdown/EANet>
+
+论文：
+
+<https://arxiv.org/abs/2105.02358>
+
+官方pytorch代码：
+
+<https://github.com/MenghaoGuo/EANet>
+
+第三方代码：
+
+<https://github.com/xmu-xiaoma666/External-Attention-pytorch>
+
+
+# 1. 简介
+
+注意力机制可以看做根据特征激活的重要性重新分配资源的机制。该论文提出external attention：只使用2个线性层和2个归一化层。
+
+![1](/assets/post/2021-08-18-EANet/1.png)
+_图1_
+
+# 2. EANet
+
+## 2.1 自注意力（Self-Attention）和外部注意力（External Attention）
+
+给定输入特征$F\in { {\mathbb{R}}^{N\times d}}$ ，N为元素数量，d为特征维数，self attention将F映射到query matrix $Q\in { {\mathbb{R}}^{N\times d'}}$、key matrix $K\in { {\mathbb{R}}^{N\times d'}}$、value matrix $V\in { {\mathbb{R}}^{N\times d}}$，并按照公式1得到attention矩阵$A\in { {\mathbb{R}}^{N\times N}}$、按照公式2得到输出${ {F}_{out}}$。self attention如图1(a)所示。
+
+$$A={ {\left( \alpha  \right)}_{i,j}}=\text{softmax}\left( Q{ {K}^{T}} \right) (1)$$  
+
+$${ {F}_{out}}=AV  (2)$$
+
+图1(b)是图1(a)的简化版本，通过特征空间逐像素的相似度得到注意力映射，输出为输入的改进版特征表达，Q、K、V均为输入特征F，如公式3、4。
+
+$$A=\text{softmax}\left( F{ {F}^{T}} \right)  (3)$$   
+
+$${ {F}_{out}}=AF     (4)$$         
+
+然而，即便使用简化版本，计算复杂度依旧为$O\left( d{ {N}^{2}} \right)$。self attention可以认为是使用线性变换来重新更新输入特征，但是需要N*N的self attention matrix和N个元素的self value matrix，另外，自注意力只考虑当前输入内部的关系，忽略了不同输入之间潜在的关系，因而限制了自注意力的性能和灵活性。
+
+因而，该文提出外部注意力（EA，external attention），EA计算输入像素和额外内存单元（external memory unit）$M\in { {\mathbb{R}}^{S\times d}}$之间的注意力。
+
+$$A={ {\left( \alpha  \right)}_{i,j}}=\text{Norm}\left( F{ {M}^{T}} \right)   (5)$$ 
+
+$${ {F}_{out}}=AM     (6)$$             
+
+公式5中的${ {\alpha }_{i,j}}$为第i个像素和M的第j行的相似度。M为独立于输入的可学习矩阵，其代表整个训练数据的内存。A为从数据库级别先验知识得到的注意力映射，其采用和自注意力类似的归一化方式（下文2.2节）。最终通过A和M更新输入特征。
+
+实际应用中，使用2个不同的内存单元
+$${ {M}_{k}}$$
+和
+$${ {M}_{v}}$$
+，来增加网络的适应能力。如公式7、8。
+
+$$A=\text{Norm}\left( FM_{k}^{T} \right)    (7)$$       
+
+$${ {F}_{out}}=A{ {M}_{v}}   (8)$$        
+
+实现上，
+$${ {M}_k}$$
+和
+$${ M_{v}}$$
+都是用conv1d实现。代码中使用了resnet的方式，最终输出为
+$$F+{ {F}_{out}}$$
+。
+
+外部注意力的计算复杂度为
+$$O\left( dSN \right)$$
+，其中d和S为超参数。作者发现，很小的S，如64，实验效果就很好。因而外部注意力比自注意力更搞笑，能够应用于大尺度的输入，另外，外部注意力的计算负荷等效于1*1卷积。
+
+## 2.2 归一化
+自注意力中，使用Softmax来归一化注意力矩阵，确保
+$$\sum\nolimits_{j}{ { {\alpha }_{i,j}}=1}$$
+。该注意力矩阵对输入特征的尺度敏感，因为其每行元素之和为1（输入特征尺度越大，每个特征被归一化后的值越小）。因而本文使用<https://arxiv.org/abs/2012.09688v4>中提出的double-normalization。该方法分别归一化行和列，如下：
+
+$${ { \left( {\tilde{\alpha }} \right)}_{i,j}}=FM_ {k}^{T}  (9)$$
+
+$${ {\tilde{\alpha }}_{i,j}}={\exp \left( { { {\tilde{\alpha }}}_{i,j}} \right)}/{\sum\limits_{k}{\exp \left( { { {\tilde{\alpha }}}_{k,j}} \right)}}\; (10)$$ 
+
+$${ {\alpha }_{i,j}}={ { { {\tilde{\alpha }}}_{i,j}}}/{\sum\limits_{k}{ { { {\tilde{\alpha }}}_{i,k}}}}\;    (11)$$               
+
+其中公式10对A的每列归一化，公式11再对A的每行归一化。
+
+外部注意力的伪代码如Algorithm 1所示：
+
+![2](/assets/post/2021-08-18-EANet/2.png)
+_Algorithm 1_
+
+2.3 多头外部注意力（Multi-head external attention）
+在不同通道多次计算自注意力，这种方式称作多头注意力（Multi-head self attention）。其能不火不同token之间的关系，提高single head self attention的能力。
+
+对外部注意力进行相应推广，多头外部注意力定义如下：
+
+$${ {h}_{i}}=\text{ExternalAttention}({ {F}_{i}},{ {M}_{k}},{ {M}_{v}})   (12)$$   
+
+$${ {F}_{out}}=\text{MultiHead}(F,{ {M}_{k}},{ {M}_{v}}) (13)$$          
+
+$$\text{      }=Concat({ {h}_{1}},\cdots ,{ {h}_{H}}){ {W}_{o}}   (14)$$          
+
+其中$${ {h}_{i}}$$为第i个头，H为头的数量，$${ {W}_{o}}$$为线性变换矩阵，确保输入和输出维度一致。$${ {M}_{k}}\in { {\mathbb{R}}^{S\times d}}$$和$${ {M}_{v}}\in { {\mathbb{R}}^{S\times d}}$$为不同头共享的内存单元。这种结构可以均衡头的数量H和共享内存单元中的元素数量S，比如将H乘以k同时将S除以k。多头外部注意力如如2所示，伪代码如Algorithm 2所示。
+
+![2](/assets/post/2021-08-18-EANet/2.png)
+_图2_
+
+![2](/assets/post/2021-08-18-EANet/a2.png)
+_Algorithm 2_
+
+# 3. 代码
+
+EANet模型在model_torch.py中。
+
+<details>
+
+```python
+class ConvBNReLU(nn.Module):
+    '''Module for the Conv-BN-ReLU tuple.'''
+
+    def __init__(self, c_in, c_out, kernel_size, stride, padding, dilation):
+        super(ConvBNReLU, self).__init__()
+        self.conv = nn.Conv2d(
+                c_in, c_out, kernel_size=kernel_size, stride=stride, 
+                padding=padding, dilation=dilation, bias=False)
+        self.bn = norm_layer(c_out)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.bn(x)
+        x = self.relu(x)
+        return x
+
+class External_attention(nn.Module):
+    '''
+    Arguments:
+        c (int): The input and output channel number.
+    '''
+    def __init__(self, c):  # c为输入和输出通道数量
+        super(External_attention, self).__init__()
+        
+        self.conv1 = nn.Conv2d(c, c, 1)
+
+        self.k = 64
+        self.linear_0 = nn.Conv1d(c, self.k, 1, bias=False)
+
+        self.linear_1 = nn.Conv1d(self.k, c, 1, bias=False)
+        self.linear_1.weight.data = self.linear_0.weight.data.permute(1, 0, 2)        
+        
+        self.conv2 = nn.Sequential(nn.Conv2d(c, c, 1, bias=False), norm_layer(c))   # conv+bn     
+        
+        for m in self.modules():  # 参数初始化
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(m, nn.Conv1d):
+                n = m.kernel_size[0] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(m, _BatchNorm):
+                m.weight.data.fill_(1)
+                if m.bias is not None:
+                    m.bias.data.zero_()
+ 
+
+    def forward(self, x):
+        # x(bchw) → Conv2d(bchw) → view(bcn) → Conv1d(bkn) → softmax(bkn) → norm(bkn) → Conv1d(bcn) → view(bchw) → conv+bn → + → relu → x
+        #         ↘-------------------------------------------------------------------------------------------------------↗
+
+        idn = x
+        x = self.conv1(x)
+
+        b, c, h, w = x.size()
+        n = h*w
+        x = x.view(b, c, h*w)   # b * c * n 
+
+        attn = self.linear_0(x) # b, k, n
+        attn = F.softmax(attn, dim=-1) # b, k, n
+
+        attn = attn / (1e-9 + attn.sum(dim=1, keepdim=True)) #  # b, k, n   上面的norm
+        x = self.linear_1(attn) # b, c, n
+
+        x = x.view(b, c, h, w)
+        x = self.conv2(x)
+        x = x + idn
+        x = F.relu(x)
+        return x
+
+class EANet(nn.Module):
+    def __init__(self, n_classes, n_layers):
+        super().__init__()
+        backbone = resnet(n_layers, settings.STRIDE)
+        self.extractor = nn.Sequential(
+            backbone.conv1,
+            backbone.bn1,
+            backbone.relu,
+            backbone.maxpool,
+            backbone.layer1,
+            backbone.layer2,
+            backbone.layer3,
+            backbone.layer4)
+
+        self.fc0 = ConvBNReLU(2048, 512, 3, 1, 1, 1)
+        self.linu = External_attention(512)
+        self.fc1 = nn.Sequential(
+            ConvBNReLU(512, 256, 3, 1, 1, 1),
+            nn.Dropout2d(p=0.1))
+        self.fc2 = nn.Conv2d(256, n_classes, 1)
+
+        self.crit = CrossEntropyLoss2d(ignore_index=settings.IGNORE_LABEL, 
+                                       reduction='none')
+
+    def forward(self, img, lbl=None, size=None):
+        x = self.extractor(img)
+        x = self.fc0(x)
+        x = self.linu(x)
+        x = self.fc1(x)
+        x = self.fc2(x)
+
+        if size is None:
+            size = img.size()[-2:]
+        pred = F.interpolate(x, size=size, mode='bilinear', align_corners=True)
+
+        if self.training and lbl is not None:
+            loss = self.crit(pred, lbl)
+            return loss
+        else:
+            return pred
+```
+</details>
