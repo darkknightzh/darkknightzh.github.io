@@ -4,6 +4,7 @@ title:  "markdown基本语法"
 date:   2021-8-30 15:50:00 +0800
 tags: demo
 pin: true
+math: true
 ---
 
 <!-- 已放弃，受不了编辑公式了。还是继续使用博客园吧。。。 -->
