@@ -1,0 +1,221 @@
+---
+layout: post
+title:  "DETR End-to-End Object Detection with Transformers(代码未添加)"
+date:   2021-8-21 09:23:00 +0800
+tags: [deep learning, algorithm, transformers]
+pin: true
+math: true
+---
+
+<style> h1 { border-bottom: none } </style>
+
+转载请注明出处：
+
+<https://darkknightzh.github.io/posts/DETR>
+
+论文：
+
+<https://arxiv.org/abs/2005.12872>
+
+官方pytorch代码：
+
+<https://github.com/facebookresearch/detr>
+
+
+# 1. 简介
+该文提出基于Transformer的端到端目标检测算法（DEtection TRansformer, DETR），该算法基于以下算法：用于集合预测的二分图最大匹配损失，基于transformer的编码器-解码器结构，并行解码，目标检测算法。
+
+目前常用的两阶段检测器根据候选框预测坐标，一阶段检测器根据anchor或者网格预测目标，本文则根据输入图像直接预测检测的绝对坐标。
+
+之前没有经典的深度学习模型直接预测集合。基本的集合预测方式是多标签分类，如1-vs-多，这种方式不适合检测领域，因为检测中元素之间有相近的低层结构（接近的bbox）。大多数检测器使用nms等后处理方法来解决该问题，但是直接集合预测是无需后处理的。该文使用二分匹配损失，但和之前做法不同的是，该文不再使用回归模型，而是将transformers和并行解码结合起来，可以更好的均衡计算代价和坐标预测时全局计算的性能。传统的两阶段检测器根据候选框预测坐标，一阶段检测器根据anchor或者网格预测目标，本文则是根据输入图像直接预测检测的绝对坐标。DETR总体结构如图1所示，训练阶段使用二分匹配来匹配预测框和GT框（真值框，ground truth框）。未匹配到的预测框是"无目标"类别。DETR一次性预测所有目标，并且使用预测目标和GT目标二分匹配的集合损失进行端到端的训练。DETR不使用空间anchors和NMS，简化了检测过程。并且DETR无需额外层，直接使用标准CNN和transformer即可。
+
+![1](/assets/post/2021-08-21-DETR/1.png)
+_图1_
+
+# 2. DETR
+
+直接序列预测中有2个主要因素：（1）保证预测框和GT框匹配唯一性的集合预测损失。（2）预测不同目标和目标之间关系的网络结构。
+
+## 2.1集合预测损失
+
+DERT使用二分图最大匹配对预测框和GT框进行匹配，并做出固定的N个预测，从而得到bbox的损失。N比一张图像中目标数量略大一些。
+
+令y为目标的GT集合，
+$$\tilde{y}=\left\{ { { {\tilde{y}}}_{i}} \right\}_{i=1}^{N}$$
+为N个预测集合。假定N大于图像中目标的数量，因而可以对y使用
+$$\varnothing $$
+（代表没有目标）填充成大小同样为N的集合。为了找到这两个集合间二分图的最大匹配结果，需要找到一个包含N个元素的序列$\sigma \in { {S}_{N}}$（论文中为 ，打不出来该字母） ，使得公式1损失最小：
+
+$$\hat{\sigma }=\underset{\sigma \in { {S}_{N}}}{\mathop \arg \min }\,\sum\limits_{i}^{N}{ { {L}_{match}}\left( { {y}_{i}},{ { {\hat{y}}}_{\sigma \left( i \right)}} \right)}  \tag{1}$$
+
+其中
+$${ {L}_{match}}\left( { {y}_{i}},{ { {\hat{y}}}_{\sigma \left( i \right)}} \right)$$
+为GT值
+$${ {y}_{i}}$$
+和使用
+$$\sigma \left( i \right)$$
+进行索引的预测值之间成对的匹配损失。这个最优匹配可以使用匈牙利算法（Hungarian algorithm）高效计算。该匹配损失同时考虑到了类别预测的分类损失和预测框和GT框之间相似性的bbox回归损失。每个GT集合的元素i可以认为是$${ {y}_{i}}=\left( { {c}_{i}},{ {b}_{i}} \right)$$，其中$${ {c}_{i}}$$为实际目标类别（可以为
+$$\varnothing $$
+），
+$${ {b}_{i}}\in { {\left[ 0,1 \right]}^{4}}$$
+为一个定义了GT框中心坐标和归一化宽、高的4维向量。对于使用
+$$\sigma \left( i \right)$$
+进行索引的预测值，定义
+$${ {\hat{p}}_{\sigma \left( i \right)}}\left( { {c}_{i}} \right)$$
+为类别
+$${ {c}_{i}}$$
+的概率，
+$${ {\hat{b}}_{\sigma \left( i \right)}}$$
+为预测框。因而（注意，原论文中未单独标记该公式）：
+
+$${ {L}_{match}}\left( { {y}_{i}},{ { {\hat{y}}}_{\sigma \left( i \right)}} \right)=-{ {1}_{\left\{ { {c}_{i}}\ne \varnothing  \right\}}}{ {\hat{p}}_{\sigma \left( i \right)}}\left( { {c}_{i}} \right)+{ {1}_{\left\{ { {c}_{i}}\ne \varnothing  \right\}}}{ {L}_{box}}\left( { {b}_{i}},{ { {\hat{b}}}_{\sigma \left( i \right)}} \right)  \tag{2}$$
+
+此处直接使用概率（未使用log，下面公式3使用了log），因而前后两项度量单位相同，实验结果中性能更好。此处进行匹配的过程和使用anchor来找到GT目标的作用相同。区别是此处需要找到预测框和GT框无重复且1对1的匹配。
+
+经过上述匹配之后，第二步是计算所有匹配结果的Hungarian损失。该损失和常见的目标检测的损失相同，都是类别预测的负似然对数和下文定义的目标框损失的线性组合（注意，原论文中此处为公式2）：
+
+$${ {L}_{Hungarian}}\left( y,\hat{y} \right)=\sum\limits_{i=1}^{N}{\left[ -\log { { {\hat{p}}}_{\sigma \left( i \right)}}\left( { {c}_{i}} \right)+{ {1}_{\left\{ { {c}_{i}}\ne \varnothing  \right\}}}{ {L}_{box}}\left( { {b}_{i}},{ { {\hat{b}}}_{\hat{\sigma }\left( i \right)}} \right) \right]} \tag{3}$$
+
+其中$\hat{\sigma }$为公式1找到的最优匹配结果。实际中，为了平衡正负样本不均衡性，将负样本的log项权重降低到1/10。这种做法和Faster R-CNN训练正负样本候选框的方式相似。
+
+**目标框损失（Bounding box loss）**：匹配损失（公式2）和Hungarian损失（公式3）中的第二项用来对边边界框进行打分。该文直接预测目标框。这样能简化实现代码，但是会有另外的问题。相对误差很小的大目标和小目标在使用如L1损失时，直接预测目标框时损失会相差很大。为了减弱该问题，本文使用L1损失和GIOU损失（generalized IoU loss）的线性组合（注意，原论文中未单独标记该公式）：
+
+$${ {L}_{box}}\left( { {b}_{i}},{ { {\hat{b}}}_{\sigma \left( i \right)}} \right)={ {\lambda }_{iou}}{ {L}_{iou}}\left( { {b}_{i}},{ { {\hat{b}}}_{\sigma \left( i \right)}} \right)+{ {\lambda }_{L1}}{ {\left\| { {b}_{i}}-{ { {\hat{b}}}_{\sigma \left( i \right)}} \right\|}_{1}} \tag{4}$$
+
+其中
+$${ {\lambda }_{iou}},{ {\lambda }_{L1}}\in \mathbb{R}$$
+均为超参。这两个损失通过当前batch中目标的数量进行归一化。
+
+## 2.2 DETR结构
+
+![1](/assets/post/2021-08-21-DETR/2.png)
+_图2_
+
+DETR结构如图2所示，其包括3个主要部分：用于提取特征的CNN骨干网络，编码器-解码器结构的transformer，用于得到最终检测结果的前馈神经网络（feed forward network， FFN）。
+
+**骨干网络**：假定输入图像
+$${ {x}_{img}}\in { {\mathbb{R}}^{3\times { {H}_{0}}\times { {W}_{0}}}}$$
+（输入不同尺寸的图像得到一个batch的输入，使用0填充确保所有图像都和当前batch中最大图像的尺寸
+$${ {H}_{0}}\times { {W}_{0}}$$
+相同），CNN骨干网络会得到低分辨率的特征图
+$$f\in { {\mathbb{R}}^{C\times H\times W}}$$
+。其中C=2048，
+$$H,W=\frac{ { {H}_{0}}}{32},\frac{ { {W}_{0}}}{32}$$
+。
+
+**transformer编码器**：首先使用1*1卷积将输入特征通道从C降低到d维，从而得到新的特征
+$${ {z}_{0}}\in { {\mathbb{R}}^{d\times H\times W}}$$
+，由于编码器需要序列作为输入，因而将输入${ {z}_{0}}$的空间方向转换成1维，从而得到$d\times HW$维的输入特征。每个编码器层都使用标准的结构，切包含多头自注意力模块和前行神经网络（FFN）模块。由于transformer结构具有置换不变性，因而将固定位置编码添加到每个注意力层的输入中。补充材料给出网络的详细定义，这与<https://arxiv.org/abs/1706.03762>中的描述相同。
+
+**transformer解码器**：解码器使用transformer标准结构，使用N个d维的多头自注意力和编码器-解码器注意力机制进行变换。该文和原始transformer的区别是，该模型在每个解码器层并行解码N个目标，而原作者<https://arxiv.org/abs/1706.03762>使用自回归模型一次预测一个元素的输出。不熟悉相关概念的读者可参见补充材料。由于解码器也具有置换不变性，N个输入特征必须均不相同，这样才能得到不同的结果。这些输入特征学习的是位置编码，我们称作object queries，和编码器类似，将他们添加到每个注意力层的输入中。N个object queries通过解码器变换到输出特征，而后在通过前向神经网络（FFN，下面介绍）独立解码成目标框的坐标和目标类别，得到N个最终的预测结果。对这些特征使用自注意力和编码器-解码器注意力，模型能够使用目标之间的成对关系，同事能够使用整个图像的信息来预测目标。
+
+**预测的前向神经网络（Prediction feed-forward networks, FFNs）**：最终的预测使用使用ReLU作为激活函数且隐含维度为d的3层感知器，和一个线性投影层。FFN预测目标相对于输入图像的归一化坐标中心、宽、高。线性投影层使用softmax预测目标类别。由于本文预测固定数量N的边界框，通常N远大于图像中实际的目标数量，因而额外的类别
+$$\varnothing $$
+ 代表当前预测框中无目标。该类别类似于标准目标检测方法中的“背景”类别。
+
+**辅助解码损失（Auxiliary decoding losses）**：我们发现在训练阶段的解码器中使用辅助损失（<https://arxiv.org/abs/1808.04444>）是有帮助的，特别是有利于模型输出每个类别正确的目标数量。因而该文每个解码层之后增加了预测FFNs和Hungarian损失。所有的预测FFNs共享权重。使用额外的共享layer-norm层将不同解码层的输入归一化到FFN层。
+
+
+
+# 3. 代码
+
+之后添加
+
+# A. 附录
+
+## A.1 多头注意力层
+
+注意力机制和<https://arxiv.org/abs/1808.04444>一致，除了位置编码和<https://arxiv.org/abs/1911.03584>一致。
+多头：有M个头且通道数为d的多头注意力机制如下（$d'=\frac{d}{M}$，下标给出了矩阵/张量大小。注意，原论文中此处为公式3）：
+
+![a1](/assets/post/2021-08-21-DETR/a1.png){: width="400"}
+
+(5)
+
+其中
+$${ {X}_{q}}$$
+为长度为
+$${ {N}_{q}}$$
+的query sequence，
+$${ {X}_{kv}}$$
+为长度为
+$${ {N}_{kv}}$$
+的key-value sequence（为简化，使用相同数量的通道d），T为计算query, key and value embeddings的权重张量，L为投影矩阵。输出和query sequence大小相同。多头自注意力（mh-s-attn）为
+$${ {X}_{q}}={ {X}_{kv}}$$
+的特殊情况（注意，原论文中此处为公式4）：
+
+$$\text{mh-s-attn}(X,T,L)=\text{mh-attn}(X,X,T,L)  \tag{6}$$
+
+多头注意力为M个单头注意力拼接，并加上一个投影矩阵L。<https://arxiv.org/abs/1808.04444>中使用残差连接、dropout和layer-norm。换句话说，定义
+$${ {\tilde{X}}_{q}}=\text{mh-attn}({ {X}_{q}},{ {X}_{kv}},T,L)$，且${ {\bar{\bar{X}}}^{\left( q \right)}}$$
+为注意力头的拼接，则（注意，原论文中此处为公式5, 6）：
+
+$$X_{q}^{'}=\left[ \text{mh-attn}({ {X}_{q}},{ {X}_{kv}},{ {T}_{1}});\ldots ;\text{mh-attn}({ {X}_{q}},{ {X}_{kv}},{ {T}_{M}}) \right]  \tag{7}$$
+
+$${ {\tilde{X}}_{q}}=\text{layernorm}\left( { {X}_{q}}+dropout\left( LX_{q}^{'} \right) \right) \tag{8}$$
+
+其中$\left[ ; \right]$代表在通道维度拼接。
+
+说明：论文中这样定义，但是感觉${ {\bar{\bar{X}}}^{\left( q \right)}}$即指公式7中的$X_{q}^{'}$。
+
+**单头**：使用权重张量$T'\in { {\mathbb{R}}^{3\times d'\times d}}$的注意力头，表示为
+$$\text{attn}\left( { {X}_{q}},{ {X}_{kv}},T' \right)$$
+，依赖额外的位置编码
+$${ {P}_{q}}\in { {\mathbb{R}}^{d\times { {N}_{q}}}}$$
+和
+$${ {P}_{kv}}\in { {\mathbb{R}}^{d\times { {N}_{kv}}}}$$
+。在加上query和key的位置编码之后，其通过下式计算query, key and value embeddings（见论文<https://arxiv.org/abs/1911.0358>。注意，原论文中此处为公式7）：
+
+$$\left[ Q;K;V \right]=\left[ T_{1}^{'}\left( { {X}_{q}}+{ {P}_{q}} \right);T_{2}^{'}\left( { {X}_{kv}}+{ {P}_{kv}} \right);T_{3}^{'}{ {X}_{kv}} \right] \tag{9}$$
+
+其中$T'$为$T_{1}^{'},T_{2}^{'},T_{3}^{'}$的拼接。注意力权重（attention weights）$\alpha $通过queries和keys点乘并通过softmax得到，这样query sequence的每个元素都会和key-value sequence的所有元素相关（i为query的索引，j为key-value的索引。注意，原论文中此处为公式8）
+
+$${ {\alpha }_{i,j}}=\frac{ { {e}^{\frac{1}{\sqrt{d'}}Q_{i}^{T}{ {K}_{j}}}}}{ { {Z}_{i}}}\text{ ,    }\text{ }{ {Z}_{i}}\text{=}\sum\limits_{j=1}^{ { {N}_{kv}}}{ { {e}^{\frac{1}{\sqrt{d'}}Q_{i}^{T}{ {K}_{j}}}}} \tag{10}$$
+
+该文中，位置编码可以学习到或者固定该值，但是对于给定的query/key-value sequence都在所有注意力层共享，因而该文不明确得把它们作为注意力的参数。在描述编码器和解码器时，该文给出了关于其精确值的更多细节。最终输出是由注意力权重加权之和：第i行为
+$$\text{att}{ {\text{n}}_{i}}\left( { {X}_{q}},{ {X}_{kv}},T' \right)=\sum\nolimits_{j=1}^{ { {N}_{kv}}}{ { {\alpha }_{i,j}}{ {V}_{j}}}$$
+
+**前向神经网络层（Feed-forward network layers, FFN）**：原始的FFN层使用多层1*1卷积，在本文情况下有Md个输入和输出通道。本文使用的FFN由2层1*1卷积核ReLU组成。另外在两层后也有残差连接/dropout/layernorm，和公式8类似。
+
+## A.2 损失
+
+该文中所有的损失都通道当前batch中目标的个数进行归一化。分布式计算中需要注意：由于每个GPU都使用子batch，由于每个子batch中目标个数不均衡，因而不能使用子batch中目标个数归一化，而应该使用所有子batch目标总数进行归一化。
+
+**目标框损失**：损失中使用generalized IoU（GIoU）加上L1损失（注意，原论文中此处为公式9）：
+
+$${ {L}_{box}}\left( { {b}_{\sigma \left( i \right)}},{ { {\hat{b}}}_{i}} \right)={ {\lambda }_{iou}}{ {L}_{iou}}\left( { {b}_{\sigma \left( i \right)}},{ { {\hat{b}}}_{i}} \right)+{ {\lambda }_{L1}}\left\| { {b}_{\sigma \left( i \right)}}-{ { {\hat{b}}}_{i}} \right\| \tag{11}$$
+
+其中
+$${ {\lambda }_{iou}},{ {\lambda }_{L1}}\in \mathbb{R}$$
+为超参，
+$${ {L}_{iou}}\left( \centerdot  \right)$$
+为GIoU（注意，原论文中此处为公式10）：
+$${ {L}_{iou}}\left( { {b}_{\sigma \left( i \right)}},{ { {\hat{b}}}_{i}} \right)\text{=}1-\left( \frac{\left| { {b}_{\sigma \left( i \right)}}\bigcap { { {\hat{b}}}_{i}} \right|}{\left| { {b}_{\sigma \left( i \right)}}\bigcup { { {\hat{b}}}_{i}} \right|}-\frac{\left| B\left( { {b}_{\sigma \left( i \right)}},{ { {\hat{b}}}_{i}} \right)\backslash { {b}_{\sigma \left( i \right)}}\bigcup { { {\hat{b}}}_{i}} \right|}{\left| B\left( { {b}_{\sigma \left( i \right)}},{ { {\hat{b}}}_{i}} \right) \right|} \right) \tag{12}$$ 
+其中
+$$\left| \centerdot  \right|$$
+表示面积，交集和并集的面积通过线性函数
+$${ {b}_{\sigma \left( i \right)}}$$
+和
+$$\hat{b}$$
+的min/max计算，使得损失对随机梯度表现得足够好。
+$$B\left( { {b}_{\sigma \left( i \right)}},{ { {\hat{b}}}_{i}} \right)$$
+代表包含
+$${ {b}_{\sigma \left( i \right)}}$$
+和
+$$\hat{b}$$
+的最大的框。
+
+**DICE/F-1 loss**：DICE系数（<https://arxiv.org/abs/1606.04797>）与IoU密切相关。如果定义
+$$\hat{m}$$
+为模型的raw mask logits prediction，并且m为模型的binary target mask，损失定义为（注意，原论文中此处为公式11）：
+
+$${ {L}_{DICE}}\left( m,\hat{m} \right)=1-\frac{2m\sigma \left( {\hat{m}} \right)+1}{\sigma \left( {\hat{m}} \right)+m+1} \tag{13}$$
+
+其中$\sigma $为sigmoid函数。该损失通过目标数量进行归一化。
+
+## A.3 详细结构
+
+图3列出了DETR中使用的transformer和每个注意力层使用的位置编码的具体结构。图像通过CNN骨干网络得到的特征传入transformer编码子网络和在每个多头自自注意力层传入queries and keys的空间位置编码子网络。之后，queries传入解码器（初始化为0），输出位置编码（object queries），并且通过多个多头自注意力和解码器-编码器注意力层得到最终的预测类别和边界框。能够跳过第一个解码器层的第一个自注意力层。
+
+![3](/assets/post/2021-08-21-DETR/3.png)
+_图3_

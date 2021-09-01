@@ -7,7 +7,6 @@ pin: true
 math: true
 ---
 
-已放弃，受不了编辑公式了。还是继续使用博客园吧。。。
 
 说明：
 
@@ -167,4 +166,10 @@ $$ \sum_{n=1}^\infty 1/n^2 = \frac{\pi^2}{6} $$
 行内公式：
 When $(a \ne 0)$, there are two solutions to $(ax^2 + bx + c = 0)$ and they are
 
-$$ x = {-b \pm \sqrt{b^2-4ac} \over 2a} $$
+$$ x = {-b \pm \sqrt{b^2-4ac} \over 2a} \tag{1}$$
+
+
+$${ {K}_{Sim}}({ {P}_{i}},{ {P}_{j}}|{ {\sigma }_{1}})=\left\{ \begin{matrix}
+   \sum\nolimits_{n}{\tanh \frac{c_{i}^{n}}{ { {\sigma }_{1}}}\tanh \frac{c_{j}^{n}}{ { {\sigma }_{1}}}} & if\text{ }k_{j}^{n} is within B(k_{i}^{n})  \\
+   0 & otherwise  \\
+\end{matrix} \right.$$
