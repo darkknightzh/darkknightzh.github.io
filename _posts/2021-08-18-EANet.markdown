@@ -37,7 +37,19 @@ _图1_
 
 ## 2.1 自注意力（Self-Attention）和外部注意力（External Attention）
 
-给定输入特征$F\in { {\mathbb{R}}^{N\times d}}$ ，N为元素数量，d为特征维数，self attention将F映射到query matrix $Q\in { {\mathbb{R}}^{N\times d'}}$、key matrix $K\in { {\mathbb{R}}^{N\times d'}}$、value matrix $V\in { {\mathbb{R}}^{N\times d}}$，并按照公式1得到attention矩阵$A\in { {\mathbb{R}}^{N\times N}}$、按照公式2得到输出${ {F}_{out}}$。self attention如图1(a)所示。
+给定输入特征
+$$F\in { {\mathbb{R}}^{N\times d}}$$
+ ，N为元素数量，d为特征维数，self attention将F映射到query matrix 
+ $$Q\in { {\mathbb{R}}^{N\times d'}}$$
+ 、key matrix 
+ $$K\in { {\mathbb{R}}^{N\times d'}}$$
+ 、value matrix 
+ $$V\in { {\mathbb{R}}^{N\times d}}$$
+ ，并按照公式1得到attention矩阵
+ $$A\in { {\mathbb{R}}^{N\times N}}$$
+ 、按照公式2得到输出
+ $${ {F}_{out}}$$
+ 。self attention如图1(a)所示。
 
 $$A={ {\left( \alpha  \right)}_{i,j}}=\text{softmax}\left( Q{ {K}^{T}} \right) \tag{1}$$  
 
@@ -49,15 +61,21 @@ $$A=\text{softmax}\left( F{ {F}^{T}} \right)  \tag{3}$$
 
 $${ {F}_{out}}=AF \tag{4}$$         
 
-然而，即便使用简化版本，计算复杂度依旧为$O\left( d{ {N}^{2}} \right)$。self attention可以认为是使用线性变换来重新更新输入特征，但是需要N*N的self attention matrix和N个元素的self value matrix，另外，自注意力只考虑当前输入内部的关系，忽略了不同输入之间潜在的关系，因而限制了自注意力的性能和灵活性。
+然而，即便使用简化版本，计算复杂度依旧为
+$$O\left( d{ {N}^{2}} \right)$$
+。self attention可以认为是使用线性变换来重新更新输入特征，但是需要N*N的self attention matrix和N个元素的self value matrix，另外，自注意力只考虑当前输入内部的关系，忽略了不同输入之间潜在的关系，因而限制了自注意力的性能和灵活性。
 
-因而，该文提出外部注意力（EA，external attention），EA计算输入像素和额外内存单元（external memory unit）$M\in { {\mathbb{R}}^{S\times d}}$之间的注意力。
+因而，该文提出外部注意力（EA，external attention），EA计算输入像素和额外内存单元（external memory unit）
+$$M\in { {\mathbb{R}}^{S\times d}}$$
+之间的注意力。
 
 $$A={ {\left( \alpha  \right)}_{i,j}}=\text{Norm}\left( F{ {M}^{T}} \right)  \tag{5}$$ 
 
 $${ {F}_{out}}=AM   \tag{6}$$             
 
-公式5中的${ {\alpha }_{i,j}}$为第i个像素和M的第j行的相似度。M为独立于输入的可学习矩阵，其代表整个训练数据的内存。A为从数据库级别先验知识得到的注意力映射，其采用和自注意力类似的归一化方式（下文2.2节）。最终通过A和M更新输入特征。
+公式5中的
+$${ {\alpha }_{i,j}}$$
+为第i个像素和M的第j行的相似度。M为独立于输入的可学习矩阵，其代表整个训练数据的内存。A为从数据库级别先验知识得到的注意力映射，其采用和自注意力类似的归一化方式（下文2.2节）。最终通过A和M更新输入特征。
 
 实际应用中，使用2个不同的内存单元
 $${ {M}_{k}}$$

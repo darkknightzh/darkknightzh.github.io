@@ -44,7 +44,9 @@ DERT使用二分图最大匹配对预测框和GT框进行匹配，并做出固�
 $$\tilde{y}=\left\{ { { {\tilde{y}}}_{i}} \right\}_{i=1}^{N}$$
 为N个预测集合。假定N大于图像中目标的数量，因而可以对y使用
 $$\varnothing $$
-（代表没有目标）填充成大小同样为N的集合。为了找到这两个集合间二分图的最大匹配结果，需要找到一个包含N个元素的序列$\sigma \in { {S}_{N}}$（论文中为 ，打不出来该字母） ，使得公式1损失最小：
+（代表没有目标）填充成大小同样为N的集合。为了找到这两个集合间二分图的最大匹配结果，需要找到一个包含N个元素的序列
+$$\sigma \in { {S}_{N}}$$
+（论文中为 ，打不出来该字母） ，使得公式1损失最小：
 
 $$\hat{\sigma }=\underset{\sigma \in { {S}_{N}}}{\mathop \arg \min }\,\sum\limits_{i}^{N}{ { {L}_{match}}\left( { {y}_{i}},{ { {\hat{y}}}_{\sigma \left( i \right)}} \right)}  \tag{1}$$
 
@@ -54,7 +56,11 @@ $${ {L}_{match}}\left( { {y}_{i}},{ { {\hat{y}}}_{\sigma \left( i \right)}} \rig
 $${ {y}_{i}}$$
 和使用
 $$\sigma \left( i \right)$$
-进行索引的预测值之间成对的匹配损失。这个最优匹配可以使用匈牙利算法（Hungarian algorithm）高效计算。该匹配损失同时考虑到了类别预测的分类损失和预测框和GT框之间相似性的bbox回归损失。每个GT集合的元素i可以认为是$${ {y}_{i}}=\left( { {c}_{i}},{ {b}_{i}} \right)$$，其中$${ {c}_{i}}$$为实际目标类别（可以为
+进行索引的预测值之间成对的匹配损失。这个最优匹配可以使用匈牙利算法（Hungarian algorithm）高效计算。该匹配损失同时考虑到了类别预测的分类损失和预测框和GT框之间相似性的bbox回归损失。每个GT集合的元素i可以认为是
+$${ {y}_{i}}=\left( { {c}_{i}},{ {b}_{i}} \right)$$，
+其中
+$${ {c}_{i}}$$
+为实际目标类别（可以为
 $$\varnothing $$
 ），
 $${ {b}_{i}}\in { {\left[ 0,1 \right]}^{4}}$$
@@ -76,7 +82,9 @@ $${ {L}_{match}}\left( { {y}_{i}},{ { {\hat{y}}}_{\sigma \left( i \right)}} \rig
 
 $${ {L}_{Hungarian}}\left( y,\hat{y} \right)=\sum\limits_{i=1}^{N}{\left[ -\log { { {\hat{p}}}_{\sigma \left( i \right)}}\left( { {c}_{i}} \right)+{ {1}_{\left\{ { {c}_{i}}\ne \varnothing  \right\}}}{ {L}_{box}}\left( { {b}_{i}},{ { {\hat{b}}}_{\hat{\sigma }\left( i \right)}} \right) \right]} \tag{3}$$
 
-其中$\hat{\sigma }$为公式1找到的最优匹配结果。实际中，为了平衡正负样本不均衡性，将负样本的log项权重降低到1/10。这种做法和Faster R-CNN训练正负样本候选框的方式相似。
+其中
+$$\hat{\sigma }$$
+为公式1找到的最优匹配结果。实际中，为了平衡正负样本不均衡性，将负样本的log项权重降低到1/10。这种做法和Faster R-CNN训练正负样本候选框的方式相似。
 
 **目标框损失（Bounding box loss）**：匹配损失（公式2）和Hungarian损失（公式3）中的第二项用来对边边界框进行打分。该文直接预测目标框。这样能简化实现代码，但是会有另外的问题。相对误差很小的大目标和小目标在使用如L1损失时，直接预测目标框时损失会相差很大。为了减弱该问题，本文使用L1损失和GIOU损失（generalized IoU loss）的线性组合（注意，原论文中未单独标记该公式）：
 
@@ -105,7 +113,9 @@ $$H,W=\frac{ { {H}_{0}}}{32},\frac{ { {W}_{0}}}{32}$$
 
 **transformer编码器**：首先使用1*1卷积将输入特征通道从C降低到d维，从而得到新的特征
 $${ {z}_{0}}\in { {\mathbb{R}}^{d\times H\times W}}$$
-，由于编码器需要序列作为输入，因而将输入${ {z}_{0}}$的空间方向转换成1维，从而得到$d\times HW$维的输入特征。每个编码器层都使用标准的结构，切包含多头自注意力模块和前行神经网络（FFN）模块。由于transformer结构具有置换不变性，因而将固定位置编码添加到每个注意力层的输入中。补充材料给出网络的详细定义，这与<https://arxiv.org/abs/1706.03762>中的描述相同。
+，由于编码器需要序列作为输入，因而将输入${ {z}_{0}}$的空间方向转换成1维，从而得到
+$$d\times HW$$
+维的输入特征。每个编码器层都使用标准的结构，切包含多头自注意力模块和前行神经网络（FFN）模块。由于transformer结构具有置换不变性，因而将固定位置编码添加到每个注意力层的输入中。补充材料给出网络的详细定义，这与<https://arxiv.org/abs/1706.03762>中的描述相同。
 
 **transformer解码器**：解码器使用transformer标准结构，使用N个d维的多头自注意力和编码器-解码器注意力机制进行变换。该文和原始transformer的区别是，该模型在每个解码器层并行解码N个目标，而原作者<https://arxiv.org/abs/1706.03762>使用自回归模型一次预测一个元素的输出。不熟悉相关概念的读者可参见补充材料。由于解码器也具有置换不变性，N个输入特征必须均不相同，这样才能得到不同的结果。这些输入特征学习的是位置编码，我们称作object queries，和编码器类似，将他们添加到每个注意力层的输入中。N个object queries通过解码器变换到输出特征，而后在通过前向神经网络（FFN，下面介绍）独立解码成目标框的坐标和目标类别，得到N个最终的预测结果。对这些特征使用自注意力和编码器-解码器注意力，模型能够使用目标之间的成对关系，同事能够使用整个图像的信息来预测目标。
 
@@ -147,18 +157,28 @@ $${ {X}_{q}}={ {X}_{kv}}$$
 $$\text{mh-s-attn}(X,T,L)=\text{mh-attn}(X,X,T,L)  \tag{6}$$
 
 多头注意力为M个单头注意力拼接，并加上一个投影矩阵L。<https://arxiv.org/abs/1808.04444>中使用残差连接、dropout和layer-norm。换句话说，定义
-$${ {\tilde{X}}_{q}}=\text{mh-attn}({ {X}_{q}},{ {X}_{kv}},T,L)$，且${ {\bar{\bar{X}}}^{\left( q \right)}}$$
+$${ {\tilde{X}}_{q}}=\text{mh-attn}({ {X}_{q}},{ {X}_{kv}},T,L)$$
+，且
+$${ {\bar{\bar{X}}}^{\left( q \right)}}$$
 为注意力头的拼接，则（注意，原论文中此处为公式5, 6）：
 
 $$X_{q}^{'}=\left[ \text{mh-attn}({ {X}_{q}},{ {X}_{kv}},{ {T}_{1}});\ldots ;\text{mh-attn}({ {X}_{q}},{ {X}_{kv}},{ {T}_{M}}) \right]  \tag{7}$$
 
 $${ {\tilde{X}}_{q}}=\text{layernorm}\left( { {X}_{q}}+dropout\left( LX_{q}^{'} \right) \right) \tag{8}$$
 
-其中$\left[ ; \right]$代表在通道维度拼接。
+其中
+$$\left[ ; \right]$$
+代表在通道维度拼接。
 
-说明：论文中这样定义，但是感觉${ {\bar{\bar{X}}}^{\left( q \right)}}$即指公式7中的$X_{q}^{'}$。
+说明：论文中这样定义，但是感觉
+$${ {\bar{\bar{X}}}^{\left( q \right)}}$$
+即指公式7中的
+$$X_{q}^{'}$$
+。
 
-**单头**：使用权重张量$T'\in { {\mathbb{R}}^{3\times d'\times d}}$的注意力头，表示为
+**单头**：使用权重张量
+$$T'\in { {\mathbb{R}}^{3\times d'\times d}}$$
+的注意力头，表示为
 $$\text{attn}\left( { {X}_{q}},{ {X}_{kv}},T' \right)$$
 ，依赖额外的位置编码
 $${ {P}_{q}}\in { {\mathbb{R}}^{d\times { {N}_{q}}}}$$
@@ -168,7 +188,13 @@ $${ {P}_{kv}}\in { {\mathbb{R}}^{d\times { {N}_{kv}}}}$$
 
 $$\left[ Q;K;V \right]=\left[ T_{1}^{'}\left( { {X}_{q}}+{ {P}_{q}} \right);T_{2}^{'}\left( { {X}_{kv}}+{ {P}_{kv}} \right);T_{3}^{'}{ {X}_{kv}} \right] \tag{9}$$
 
-其中$T'$为$T_{1}^{'},T_{2}^{'},T_{3}^{'}$的拼接。注意力权重（attention weights）$\alpha $通过queries和keys点乘并通过softmax得到，这样query sequence的每个元素都会和key-value sequence的所有元素相关（i为query的索引，j为key-value的索引。注意，原论文中此处为公式8）
+其中
+$$T'$$
+为
+$$T_{1}^{'},T_{2}^{'},T_{3}^{'}$$
+的拼接。注意力权重（attention weights）
+$$\alpha $$
+通过queries和keys点乘并通过softmax得到，这样query sequence的每个元素都会和key-value sequence的所有元素相关（i为query的索引，j为key-value的索引。注意，原论文中此处为公式8）
 
 $${ {\alpha }_{i,j}}=\frac{ { {e}^{\frac{1}{\sqrt{d'}}Q_{i}^{T}{ {K}_{j}}}}}{ { {Z}_{i}}}\text{ ,    }\text{ }{ {Z}_{i}}\text{=}\sum\limits_{j=1}^{ { {N}_{kv}}}{ { {e}^{\frac{1}{\sqrt{d'}}Q_{i}^{T}{ {K}_{j}}}}} \tag{10}$$
 
@@ -211,7 +237,9 @@ $$\hat{m}$$
 
 $${ {L}_{DICE}}\left( m,\hat{m} \right)=1-\frac{2m\sigma \left( {\hat{m}} \right)+1}{\sigma \left( {\hat{m}} \right)+m+1} \tag{13}$$
 
-其中$\sigma $为sigmoid函数。该损失通过目标数量进行归一化。
+其中
+$$\sigma $$
+为sigmoid函数。该损失通过目标数量进行归一化。
 
 ## A.3 详细结构
 
