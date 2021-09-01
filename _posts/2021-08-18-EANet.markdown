@@ -96,7 +96,7 @@ $${ {\alpha }_{i,j}}={ { { {\tilde{\alpha }}}_{i,j}}}/{\sum\limits_{k}{ { { {\ti
 
 外部注意力的伪代码如Algorithm 1所示：
 
-![2](/assets/post/2021-08-18-EANet/2.png)
+![2](/assets/post/2021-08-18-EANet/a1.png)
 _Algorithm 1_
 
 2.3 多头外部注意力（Multi-head external attention）
