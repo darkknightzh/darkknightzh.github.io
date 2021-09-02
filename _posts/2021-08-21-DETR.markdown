@@ -192,7 +192,9 @@ $${ {P}_{kv}}\in { {\mathbb{R}}^{d\times { {N}_{kv}}}}$$
 
 $$\left[ Q;K;V \right]=\left[ T_{1}^{'}\left( { {X}_{q}}+{ {P}_{q}} \right);T_{2}^{'}\left( { {X}_{kv}}+{ {P}_{kv}} \right);T_{3}^{'}{ {X}_{kv}} \right] \tag{9}$$
 
-其中T'为
+其中
+$$T'$$
+为
 $$T_{1}^{'},T_{2}^{'},T_{3}^{'}$$
 的拼接。注意力权重（attention weights）
 $${\alpha }$$
