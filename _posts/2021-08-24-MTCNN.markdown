@@ -1,0 +1,111 @@
+---
+layout: post
+title:  "MTCNN Joint Face Detection and Alignment using Multi-task Cascaded Convolutional Networks(代码未添加)"
+date:   2021-08-24 16:00:00 +0800
+tags: [deep learning, algorithm, transformers]
+pin: true
+math: true
+---
+
+<style> h1 { border-bottom: none } </style>
+
+转载请注明出处：
+
+<https://darkknightzh.github.io/posts/MTCNN>
+
+论文：
+
+<https://arxiv.org/abs/1604.02878>
+
+第三方pytorch代码：
+
+<https://github.com/timesler/facenet-pytorch>
+
+# 1. 摘要
+
+该文提出MTCNN，一个级联的CNN结构，能检测人脸并得到人脸关键点信息。其包括三个阶段。第一阶段通过千层CNN网络得到候选人脸框。第二阶段通过更复杂的CNN网络，优化候选框，去除大量非人脸窗。第三阶段，通过更强大的CNN网络进一步优化检测结果并输出人脸面部关键点信息。
+
+# 2. MTCNN
+
+## 2.1 整体结构
+
+图1显示了整体结构，给定输入图像，首先将其缩放到不同大小，得到图像金字塔，该金字塔为下属三阶段级联结构的输入：
+
+**第一阶段（stage 1**）：使用全卷积网络的P-Net（Proposal Network，后悬窗网络）得到候选窗和bbox回归向量，并使用bbox回归向量矫正候选框。再使用nms抑制重合度过高的候选框。
+
+**第二阶段（stage 2）**：所有候选框通过R-Net（Refinement Network，优化网络），进一步抑制大量非人脸，并使用bbox回归来矫正bbox、使用nms抑制候选框。
+
+**第三阶段（stage 3）**：和第二阶段差不多，此步骤主要是通过O-net（Output Network，输出网络）输出最终的人脸框和5个面部关键点位置。
+
+![1](/assets/post/2021-08-24-MTCNN/1mtcnn.png)
+_图1_
+
+## 2.2 CNN结构
+
+文献<http://users.eecs.northwestern.edu/~xsh835/assets/cvpr2015_cascnn.pdf>中使用了多个CNN结构进行人脸检测，但以下原因可能会限制其性能：① 一些滤波器缺乏多样性的权重，限制模型得到更具判别性的特征。② 相比于其他目标检测和分类任务，人脸检测是二分类任务，需要更少数量的滤波器，同时需要滤波器更具有判别性。因而本文降低了滤波器数量，并且将5*5卷积换成3*3卷积，来降低计算量，同时增加网络深度，来得到更好的性能。本文的CNN结构如图2所示。
+
+![2](/assets/post/2021-08-24-MTCNN/2cnn.png)
+_图2_
+
+
+## 2.3 训练
+
+本文通过三个子任务来训练CNN网络：人脸/非人脸分类、边界框拟合、面部关键点定位。
+
+**人脸检测**：人脸检测为二分类问题，对每个样本
+$${ {x}_{i}}$$
+，使用交叉熵损失：
+
+$$L_{i}^{det}=-\left( y_{i}^{det}\log \left( { {p}_{i}} \right)+\left( 1-y_{i}^{det} \right)\left( 1-\log \left( { {p}_{i}} \right) \right) \right) \tag{1}$$
+
+其中
+$${ {p}_{i}}$$
+为通过网络得到的该样本是人脸的概率。
+$$y_{i}^{det}\in \left\{ 0,1 \right\}$$
+代表GT标签。
+
+**边界框拟合**：预测每个候选框和最近的GT框（如框的左上角坐标、宽、高）的偏移。其为拟合问题，对每个样本
+$${ {x}_{i}}$$
+，损失函数如下：
+
+$$L_{i}^{box}=\left\| \hat{y}_{i}^{box}-y_{i}^{box} \right\|_{2}^{2} \tag{2}$$
+
+其中
+$$\hat{y}_{i}^{box}$$为网络拟合的目标框，
+$$y_{i}^{box}$$为人脸的GT坐标。此处有左上角xy坐标、宽、高共4个值，因而
+$$y_{i}^{box}\in { {\mathbb{R}}^{4}}$$
+。
+
+**人脸关键点定位**：和边界框拟合的任务类似，面部关键点定位也是拟合问题，损失函数如下：
+
+$$L_{i}^{landmark}=\left\| \hat{y}_{i}^{landmark}-y_{i}^{landmark} \right\|_{2}^{2} \tag{3}$$
+
+其中
+$$\hat{y}_{i}^{landmark}$$
+为网络拟合的关键点坐标，
+$$y_{i}^{landmark}$$
+为人脸关键点的GT坐标。此处有左眼、右眼、鼻子、左嘴角、右嘴角共5组值，因而
+$$y_{i}^{landmark}\in { {\mathbb{R}}^{10}}$$
+。
+
+**多源训练（Multi-source training）**：由于每个CNN中使用不同的任务进行训练，训练阶段有不同类型的图像，比如人脸、非人脸、部分对齐的人脸，因而部分损失函数（公式1-3）未使用。比如，对于背景区域的图像，只计算
+$$L_{i}^{det}$$
+，其他两个损失都设置为0。这可以通过样本类型指示器完成。因而最终的目标函数为：
+
+$$\min \sum\nolimits_{i=1}^{N}{\sum\nolimits_{j\in \left\{ det,box,landmark \right\}}{ { {\alpha }_{j}}\beta _{i}^{j}L_{i}^{j}}} \tag{4}$$
+
+其中N为训练样本的数量，
+$${ {\alpha }_{j}}$$
+为任务的重要程度。本文在P-Net和R-Net中使用
+$$\left( { {\alpha }_{det}}=1,{ {\alpha }_{box}}=0.5,{ {\alpha }_{landmark}}=0.5 \right)$$
+；在O-Net中为了保证人脸关键点定位的准确性，使用
+$$\left( { {\alpha }_{det}}=1,{ {\alpha }_{box}}=0.5,{ {\alpha }_{landmark}}=1 \right)$$
+。
+$$\beta _{i}^{j}\in \left\{ 0,1 \right\}$$
+为样本类型指示器。本文使用sgd训练模型。
+
+**在线难例挖掘**：本文在人脸检测任务中使用在线难例挖掘。在每个batch中，对所有样本前向计算得到的损失进行排序，取前70%的作为困难样本。反向传播时只计算困难样本的梯度。
+
+# 3. 代码
+
+之后补全
