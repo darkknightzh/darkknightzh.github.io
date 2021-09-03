@@ -1,0 +1,254 @@
+---
+layout: post
+title:  "rnn"
+date:   2021-08-24 16:00:00 +0800
+tags: [deep learning, algorithm]
+pin: true
+math: true
+---
+
+<style> h1 { border-bottom: none } </style>
+
+转载请注明出处：
+
+<https://darkknightzh.github.io/posts/rnn>
+
+参考网址：
+
+<https://zhuanlan.zhihu.com/p/32103001>
+
+<https://pytorch.org/docs/stable/generated/torch.nn.RNN.html#torch.nn.RNN>
+
+<https://stanford.edu/~shervine/teaching/cs-230/cheatsheet-recurrent-neural-networks>
+
+
+说明：
+① batch_first=False时，输入为：序列长度 * batch size * 特征长度
+
+① batch_first=True，输入为：batch size *序列长度 *特征长度
+
+③ 如无特别说明，本文均为batch_first=False。
+
+# 1. rnn
+
+rnn（Recurrent Neural Network）只有一个隐含状态h，对输入短期信号非常敏感，但无法解决长时依赖问题。
+
+rnn模型示意图如图1所示，左边是rnn的循环结构，右边是rnn的循环展开形式。每一时刻t，rnn通过输入
+$${ {x}_{t}}$$
+和前一时刻的隐含状态
+$${ {h}_{t-1}}$$
+，得到当前时刻的输出
+$${ {o}_{t}}$$
+和当前时刻的隐含状态
+$${ {h}_{t}}$$
+。具体公式如下：
+
+$${ {h}_{t}}={ {g}_{1}}\left( { {W}_{ih}}{ {x}_{t}}+{ {W}_{hh}}{ {h}_{t-1}}+{ {b}_{h}} \right)$$
+
+$${ {o}_{t}}={ {g}_{2}}\left( { {W}_{ya}}{ {h}_{t}}+{ {b}_{y}} \right)$$
+
+其中
+$${ {g}_{1}}$$
+和
+$${ {g}_{2}}$$
+为激活函数。此处可以认为
+$${ {o}_{t}}$$
+为rnn加上分类层后，分类层的结果。
+
+![1](/assets/post/2021-08-12-rnn/1rnn.png)
+_图1 rnn_
+
+注意：pytorch中
+$${ {o}_{t}}$$
+为当前时刻最后一层
+$${ {h}_{t}}$$
+结果的拼接（具体见下文），(<https://pytorch.org/docs/stable/generated/torch.nn.RNN.html#torch.nn.RNN>)，
+$${ {h}_{t}}$$
+计算如下：
+
+$${ {h}_{t}}=\tanh \left( { {W}_{ih}}{ {x}_{t}}+{ {b}_{ih}}+{ {W}_{hh}}{ {h}_{t-1}}+{ {b}_{hh}} \right)$$
+
+其中tanh为激活函数，也可以为ReLU。
+
+# 2. 代码
+
+```python
+import torch
+from torch import nn
+
+num_input_feature = 10     # 输入特征数量
+num_hidden_feature = 20    # 隐含层特征数量
+num_hidden = 3             # 隐含层层数
+batch_size = 7
+num_sequence = 5           # 序列长度
+bidirectional = False
+
+model = nn.RNN(num_input_feature, num_hidden_feature, num_hidden, bidirectional=bidirectional , batch_first=False)  # 输入特征长度，隐含层特征长度，隐含层个数
+input = torch.randn(num_sequence, batch_size, num_input_feature)  # [序列长度，batchsize，输入特征长度]
+h0 = torch.randn(num_hidden*2 if bidirectional else num_hidden, batch_size, num_hidden_feature)  # 隐含层初始状态 [隐含层个数，batchsize，隐含层特征长度]
+output, hn = model(input, h0) # 输出[序列长度，batchsize，隐含层特征长度]，隐含层[隐含层个数，batchsize，隐含层特征长度]
+
+print('input', '      ', list(input.shape))
+print('h0', '      ', list(h0.shape))
+
+print('output', '      ', list(output.shape))
+print('hn', '      ', list(hn.shape))
+
+for k, v in model._parameters.items():
+    print(k, '      ', list(v.shape))
+```
+对应上述代码，当bidirectional = False时，输出如下：
+
+```terminal
+input        [5, 7, 10]
+h0        [3, 7, 20]
+output        [5, 7, 20]
+hn        [3, 7, 20]
+weight_ih_l0        [20, 10]
+weight_hh_l0        [20, 20]
+bias_ih_l0        [20]
+bias_hh_l0        [20]
+weight_ih_l1        [20, 20]
+weight_hh_l1        [20, 20]
+bias_ih_l1        [20]
+bias_hh_l1        [20]
+weight_ih_l2        [20, 20]
+weight_hh_l2        [20, 20]
+bias_ih_l2        [20]
+bias_hh_l2        [20]
+```
+当bidirectional = True时，输出如下（图6只画了bidirectional = False的情况，当其为True时，未研究过。。。）：
+
+```terminal
+input        [5, 7, 10]
+h0        [6, 7, 20]
+output        [5, 7, 40]
+hn        [6, 7, 20]
+weight_ih_l0        [20, 10]
+weight_hh_l0        [20, 20]
+bias_ih_l0        [20]
+bias_hh_l0        [20]
+weight_ih_l0_reverse        [20, 10]
+weight_hh_l0_reverse        [20, 20]
+bias_ih_l0_reverse        [20]
+bias_hh_l0_reverse        [20]
+weight_ih_l1        [20, 40]
+weight_hh_l1        [20, 20]
+bias_ih_l1        [20]
+bias_hh_l1        [20]
+weight_ih_l1_reverse        [20, 40]
+weight_hh_l1_reverse        [20, 20]
+bias_ih_l1_reverse        [20]
+bias_hh_l1_reverse        [20]
+weight_ih_l2        [20, 40]
+weight_hh_l2        [20, 20]
+bias_ih_l2        [20]
+bias_hh_l2        [20]
+weight_ih_l2_reverse        [20, 40]
+weight_hh_l2_reverse        [20, 20]
+bias_ih_l2_reverse        [20]
+bias_hh_l2_reverse        [20]
+
+```
+# 3. seq优先
+
+<https://zhuanlan.zhihu.com/p/32103001>指出了为什么rnn中默认第一维是seq，如图2、图3所示：
+
+![2](/assets/post/2021-08-12-rnn/2seqfirst.png)
+_图2_
+
+![3](/assets/post/2021-08-12-rnn/3seqfirst.png)
+_图3_
+
+# 4. 详解pytorch中的rnn
+
+对于上面的代码，rnn详细结构如图4所示。图4中每层（对应num_hidden=多少）中间特征的5个7\*20特征，先通过concat，得到5\*7\*20的特征，而后由参考网址中下述内容（图5）可见，虽然逻辑上是外层依次遍历每层（num_hidden，也即图5中的num_layers），内层是依次遍历序列长度上的每个数据（num_sequence），由于内层最终还是依次取每个数据，因而对应于先concat再依次取当前特征的[0,:,:]至[4,:,:]，等效于前一层特征直接连接到当前层特征。因而最终的rnn框图如图6所示，其中t指t时刻。
+
+注意：5位序列长度，7为batchsize，20为隐含层特征数量。图3相当于将图6中的7\*20进行了拆解，图3只涉及一个隐含层。
+
+![4](/assets/post/2021-08-12-rnn/4rnnpytorch.png)
+_图4_
+
+![5](/assets/post/2021-08-12-rnn/5pytorchcode.png)
+_图5_
+
+![6](/assets/post/2021-08-12-rnn/6rnnfinal.png)
+_图6_
+
+**说明**：
+
+① 图6中进行矩阵乘法的时候，实际调用F.linear(x, W, b)，该函数完成的操作是
+$$y=x{ {W}^{T}}+b$$
+，因而图6中左下方W_ih为20\*10的矩阵，和7*10的输入进行矩阵运算时，为
+$$(7*10)*{ {(20*10)}^{T}}+20$$
+，即为图6中左下角的(7\*10)\*(10\*20)+20→7\*20，此处+20为broadcast的加法，且此处指矩阵维度关系，不是数学上的计算。图6中W_hh为20\*20矩阵，实际计算时也进行了转置，由于宽高相等，因而无需特别说明。
+
+② 由图6可见，rnn计算时，t时刻，每次都先送入输入的7\*10数据（7为batch size），得到结果后再送入下一个7\*10的数据，共送入5次（5为num_sequence，即rnn序列的长度），最终得到t时刻的输出。这和之前介绍的rnn默认第一维维seq相吻合。
+
+③ 图5可知，外层循环为遍历每层（num_hidden），内层循环为遍历当前序列（num_sequence），因而图6中计算t时刻结果时，是先水平计算完当前层的结果，在水平计算第二层的结果，以此类推。即先水平、再垂直的方向计算。
+
+④ 由于rnn中每个中间结果，一方面传入下一个输入，当做此时的隐含状态，另一方面送到输出，如图7所示。其中，对于o5的位置，其一方面作为隐含状态h中的隐含层3，另一方面作为输出状态o中的o5，因而输出o[-1, :, :]和隐含状态h[-1, :, :]相同。为方便显示，当num_input_feature = 2，num_hidden_feature = 4时，输出output和hn分别如图8所示，output[-1]和hn[-1]相同。
+
+![7](/assets/post/2021-08-12-rnn/7output.png)
+_图7_
+
+![8](/assets/post/2021-08-12-rnn/8compare.png)
+_图8_
+
+⑤ 图6中t时刻的每个浅蓝色方框内的7\*20，实际上执行的都是图1的一个RNN计算（无最终的分类层），即pytorch中的公式
+$${ {h}_{t}}=\tanh \left( { {W}_{ih}}{ {x}_{t}}+{ {b}_{ih}}+{ {W}_{hh}}{ {h}_{t-1}}+{ {b}_{hh}} \right)$$
+，得到当前时刻、当前层、当前子序列的结果（隐含状态），其计算对应于pytorch=0.4.1中torch/nn/_functions/rnn.py下述代码（依据激活函数具体选择相应函数）。该结果一方面送到下一子序列，作为其隐含状态的输入；另一方面送入下一层，作为其输入特征。如图4右上角示例所示，只有一个输出，一方面送往右侧，另一方面送往上侧。为了方便显示，才画成7\*20的右侧和上侧各有一个输出，即图4中浅蓝色的各7*20的方框，也即图6和图7中浅蓝色方框虚线内的各7*20的子框。
+
+```python
+def RNNReLUCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
+    hy = F.relu(F.linear(input, w_ih, b_ih) + F.linear(hidden, w_hh, b_hh))
+    return hy
+
+def RNNTanhCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
+    hy = torch.tanh(F.linear(input, w_ih, b_ih) + F.linear(hidden, w_hh, b_hh))
+    return hy
+```
+
+# 5. batch_first=True
+
+① batch_first=True时，上述代码需要修改如下，其他地方不用修改。
+
+```python
+model = nn.RNN(num_input_feature, num_hidden_feature, num_hidden, bidirectional=bidirectional, batch_first=True)  # 输入特征长度，隐含层特征长度，隐含层个数
+input = torch.randn(batch_size, num_sequence, num_input_feature)  # [序列长度，batchsize，输入特征长度]
+```
+
+输出结果，只有input和output从[5, 7, 10]变成了[7, 5, 10]，其他结果尺寸不变，其中7为batch size，5位seq_len。
+
+② pytorch官方对rnn的batch_first的解释（如图9所示），该参数只影响输入input和输出output的维度，不会影响隐含状态h0和hn的维度，因而上述代码只需要修改输入input中batch_size的位置（batch_size和num_sequence互换位置），无需修改h0中batch_size的位置。
+
+![9](/assets/post/2021-08-12-rnn/9note.png)
+_图9 note_
+
+③ 当batch_first=True时，输出o[:, -1, :]和隐含状态h[-1, :, :]相同，如图10所示。
+
+![10](/assets/post/2021-08-12-rnn/10compare.png)
+_图10_
+
+# 6. rnn输入输出形式
+
+rnn可以有如下的输入输出方式（不止这些），对应上述代码的参数设置如图11所示（第4个不知道怎么设置参数。。。）
+
+ps：图片来源: <https://blog.floydhub.com/a-beginners-guide-on-recurrent-neural-networks-with-pytorch/>
+
+![11](/assets/post/2021-08-12-rnn/11type.png)
+_图11_
+
+# 7. rnn的测试训练和测试
+
+无论是训练还是测试，隐含状态h0都需要初始化，一般默认是0初始化。训练和测试时，都指定batch_size，保存模型时，不保存最终状态，只保存模型参数，即weight_ih_xx、weight_hh_xx、bias_ih_xx、bias_hh_xx等。这样训练和测试时batch size不一致，也没有关系，毕竟h0需要重新初始化，其尺寸和batch size相关（如果保存了最终状态hn，当batch size改变时，会出问题）。
+
+# 8. rnn反向传播
+
+不推导了，可以看下面的参考网址：
+
+<https://srdas.github.io/DLBook/RNNs.html>
+
+<https://d2l.ai/chapter_recurrent-neural-networks/bptt.html>
+
+<https://mmuratarat.github.io/2019-02-07/bptt-of-rnn>
