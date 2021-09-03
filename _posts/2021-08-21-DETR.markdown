@@ -22,7 +22,7 @@ math: true
 <https://github.com/facebookresearch/detr>
 
 
-# 1. 简介
+# P1.简介
 该文提出基于Transformer的端到端目标检测算法（DEtection TRansformer, DETR），该算法基于以下算法：用于集合预测的二分图最大匹配损失，基于transformer的编码器-解码器结构，并行解码，目标检测算法。
 
 目前常用的两阶段检测器根据候选框预测坐标，一阶段检测器根据anchor或者网格预测目标，本文则根据输入图像直接预测检测的绝对坐标。
@@ -32,11 +32,12 @@ math: true
 ![1](/assets/post/2021-08-21-DETR/1.png)
 _图1_
 
-# 2. DETR
+
+# P2. DETR
 
 直接序列预测中有2个主要因素：（1）保证预测框和GT框匹配唯一性的集合预测损失。（2）预测不同目标和目标之间关系的网络结构。
 
-## 2.1集合预测损失
+## P2.1 集合预测损失
 
 DERT使用二分图最大匹配对预测框和GT框进行匹配，并做出固定的N个预测，从而得到bbox的损失。N比一张图像中目标数量略大一些。
 
@@ -94,7 +95,7 @@ $${ {L}_{box}}\left( { {b}_{i}},{ { {\hat{b}}}_{\sigma \left( i \right)}} \right
 $${ {\lambda }_{iou}},{ {\lambda }_{L1}}\in \mathbb{R}$$
 均为超参。这两个损失通过当前batch中目标的数量进行归一化。
 
-## 2.2 DETR结构
+## P2.2 DETR结构
 
 ![1](/assets/post/2021-08-21-DETR/2.png)
 _图2_
@@ -128,8 +129,7 @@ $$\varnothing $$
 **辅助解码损失（Auxiliary decoding losses）**：我们发现在训练阶段的解码器中使用辅助损失（<https://arxiv.org/abs/1808.04444>）是有帮助的，特别是有利于模型输出每个类别正确的目标数量。因而该文每个解码层之后增加了预测FFNs和Hungarian损失。所有的预测FFNs共享权重。使用额外的共享layer-norm层将不同解码层的输入归一化到FFN层。
 
 
-
-# 3. 代码
+# P3.代码
 
 之后添加
 

@@ -29,7 +29,7 @@ math: true
 
 ③ 如无特别说明，本文均为batch_first=False。
 
-# 1. rnn
+## 1. rnn
 
 rnn（Recurrent Neural Network）只有一个隐含状态h，对输入短期信号非常敏感，但无法解决长时依赖问题。
 
@@ -70,7 +70,7 @@ $${ {h}_{t}}=\tanh \left( { {W}_{ih}}{ {x}_{t}}+{ {b}_{ih}}+{ {W}_{hh}}{ {h}_{t-
 
 其中tanh为激活函数，也可以为ReLU。
 
-# 2. 代码
+## 2. 代码
 
 ```python
 import torch
@@ -152,7 +152,7 @@ bias_ih_l2_reverse        [20]
 bias_hh_l2_reverse        [20]
 ```
 
-# 3. seq优先
+## 3. seq优先
 
 <https://zhuanlan.zhihu.com/p/32103001>指出了为什么rnn中默认第一维是seq，如图2、图3所示：
 
@@ -162,7 +162,7 @@ _图2_
 ![3](/assets/post/2021-08-12-rnn/3seqfirst.png)
 _图3_
 
-# 4. 详解pytorch中的rnn
+## 4. 详解pytorch中的rnn
 
 对于上面的代码，rnn详细结构如图4所示。图4中每层（对应num_hidden=多少）中间特征的5个7\*20特征，先通过concat，得到5\*7\*20的特征，而后由参考网址中下述内容（图5）可见，虽然逻辑上是外层依次遍历每层（num_hidden，也即图5中的num_layers），内层是依次遍历序列长度上的每个数据（num_sequence），由于内层最终还是依次取每个数据，因而对应于先concat再依次取当前特征的[0,:,:]至[4,:,:]，等效于前一层特征直接连接到当前层特征。因而最终的rnn框图如图6所示，其中t指t时刻。
 
@@ -211,7 +211,7 @@ def RNNTanhCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
     return hy
 ```
 
-# 5. batch_first=True
+## 5. batch_first=True
 
 ① batch_first=True时，上述代码需要修改如下，其他地方不用修改。
 
@@ -232,7 +232,7 @@ _图9 note_
 ![10](/assets/post/2021-08-12-rnn/10compare.png)
 _图10_
 
-# 6. rnn输入输出形式
+## 6. rnn输入输出形式
 
 rnn可以有如下的输入输出方式（不止这些），对应上述代码的参数设置如图11所示（第4个不知道怎么设置参数。。。）
 
@@ -241,11 +241,11 @@ ps：图片来源: <https://blog.floydhub.com/a-beginners-guide-on-recurrent-neu
 ![11](/assets/post/2021-08-12-rnn/11type.png)
 _图11_
 
-# 7. rnn的测试训练和测试
+## 7. rnn的测试训练和测试
 
 无论是训练还是测试，隐含状态h0都需要初始化，一般默认是0初始化。训练和测试时，都指定batch_size，保存模型时，不保存最终状态，只保存模型参数，即weight_ih_xx、weight_hh_xx、bias_ih_xx、bias_hh_xx等。这样训练和测试时batch size不一致，也没有关系，毕竟h0需要重新初始化，其尺寸和batch size相关（如果保存了最终状态hn，当batch size改变时，会出问题）。
 
-# 8. rnn反向传播
+## 8. rnn反向传播
 
 不推导了，可以看下面的参考网址：
 

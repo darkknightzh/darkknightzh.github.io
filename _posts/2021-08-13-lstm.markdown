@@ -29,7 +29,7 @@ pytorch中LSTM参考论文：
 
 说明：本文默认均是batch_first=False。该参数只影响输入input和输出output的维度，不会影响隐含状态hidden state和单元状态cell state的维度。
 
-# 1. LSTM
+## 1. LSTM
 
 由于rnn只有一个隐含状态hidden state，对输入短期信号非常敏感，但无法解决长时依赖问题。因而LSTM（Long Short Term Memory networks）在RNN的基础上，增加了单元状态cell state，用来保存长期状态，从而解决了长时依赖问题。
 
@@ -80,7 +80,7 @@ $${ {h}_{t}}={ {o}_{t}}*\tanh \left( { {C}_{t}} \right)$$
 ![1](/assets/post/2021-08-13-lstm/1lstm.png)
 _图1 lstm_
 
-# 2. 代码
+## 2. 代码
 
 ```python
 import torch
@@ -131,7 +131,7 @@ bias_ih_l1        [28]
 bias_hh_l1        [28]
 ```
 
-# 3. pytorch中LSTM详细说明
+## 3. pytorch中LSTM详细说明
 
 上述代码中，当前层（共num_hidden = 2层）、序列当前输入（序列长度num_sequence = 4）会调用torch/nn/_functions/rnn.py 中的LSTMCell函数，该函数如下：
 
@@ -180,7 +180,7 @@ $${ {h}_{t}}$$
 ![3](/assets/post/2021-08-13-lstm/3details.png)
 _图3_
 
-# 4. 反向传播
+## 4. 反向传播
 
 见相关网址：
 

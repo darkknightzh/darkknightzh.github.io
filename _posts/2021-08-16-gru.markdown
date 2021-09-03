@@ -1,0 +1,193 @@
+---
+layout: post
+title:  "gru"
+date:   2021-08-16 16:00:00 +0800
+tags: [deep learning, algorithm]
+pin: true
+math: true
+---
+
+<style> h1 { border-bottom: none } </style>
+
+转载请注明出处：
+
+<https://darkknightzh.github.io/posts/gru>
+
+论文：
+
+<https://arxiv.org/abs/1412.3555>
+
+参考网址：
+
+<http://dprogrammer.org/rnn-lstm-gru>
+
+<https://gdcoder.com/what-is-a-recurrent-neural-networks-rnns-and-gated-recurrent-unit-grus/>
+
+<https://pytorch.org/docs/stable/generated/torch.nn.GRU.html>
+
+说明：本文默认均是batch_first=False。该参数只影响输入input和输出output的维度，不会影响隐含状态hidden state的维度。
+
+
+## 1. GRU
+
+GRU和LSTM一样，均是为了解决rnn中长期以来以及梯度消失的问题。GRU和LSTM效果类似，但是GRU计算更加简单。
+
+理解了rnn和LSTM之后，GRU更加容易理解。GRU只有2个门：更新门
+$${ {z}_{t}}$$
+和重置门
+$${ {r}_{t}}$$
+。GRU结构如图1所示，GRU计算公式如下：
+
+$${ {z}_{t}}=\sigma \left( { {W}_{z}}\centerdot \left[ { {h}_{t-1}},{ {x}_{t}} \right] \right)$$
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;更新门
+
+$${ {r}_{t}}=\sigma \left( { {W}_{r}}\centerdot \left[ { {h}_{t-1}},{ {x}_{t}} \right] \right)$$
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;重置门
+
+$${ {\tilde{h}}_{t}}=\tanh \left( W\centerdot \left[ { {r}_{t}}\odot { {h}_{t-1}},{ {x}_{t}} \right] \right)$$
+&nbsp;
+
+$${ {h}_{t}}=\left( 1-{ {z}_{t}} \right)\odot { {h}_{t-1}}+{ {z}_{t}}\odot { {\tilde{h}}_{t}}$$
+&nbsp;
+
+其中更新门
+$${ {z}_{t}}$$
+和重置门
+$${ {r}_{t}}$$
+范围都是0-1之间，1代表完全保留，0代表完全丢弃。
+$$\odot $$
+为对应元素相乘。其中更新门
+$${ {z}_{t}}$$
+用来学习过去信息保留的程度，用来解决梯度消失的问题。重置门
+$${ {r}_{t}}$$
+用来学习过去信息被遗忘的程度。
+
+![1](/assets/post/2021-08-16-gru/1gru.png)
+_图1 gru_
+
+需要注意的是，pytorch中的gru的计算和上述公式稍有差异，主要体现在最终
+$${ {h}_{t}}$$
+的权重上，pytorch中gru计算公式如下：
+
+$${ {r}_{t}}=\sigma \left( { {W}_{ir}}{ {x}_{t}}+{ {b}_{ir}}+{ {W}_{hr}}{ {h}_{t-1}}+{ {b}_{hr}} \right)$$
+
+$${ {z}_{t}}=\sigma \left( { {W}_{iz}}{ {x}_{t}}+{ {b}_{iz}}+{ {W}_{hz}}{ {h}_{t-1}}+{ {b}_{hz}} \right)$$
+
+$${ {n}_{t}}=\tanh \left( { {W}_{in}}{ {x}_{t}}+{ {b}_{in}}+{ {r}_{t}}\odot \left( { {W}_{hn}}{ {h}_{t-1}}+{ {b}_{hn}} \right) \right)$$
+
+$${ {h}_{t}}=\left( 1-{ {z}_{t}} \right)\odot { {n}_{t}}+{ {z}_{t}}\odot { {h}_{t-1}}$$
+
+此处
+$${ {n}_{t}}$$
+对应上面的
+$${ {\tilde{h}}_{t}}$$
+。可见这两部分公式主要区别是计算
+$${ {h}_{t}}$$
+时
+$${ {n}_{t}}$$
+（
+$${ {\tilde{h}}_{t}}$$
+）和
+$${ {h}_{t-1}}$$
+权重的差别（权重交换了）。
+
+
+## 2. 代码
+
+```python
+import torch
+import torch.nn as nn
+
+num_input_feature = 5     # 输入特征数量
+num_hidden_feature = 7    # 隐含层特征数量
+num_hidden = 2             # 隐含层层数
+batch_size = 3
+num_sequence = 4           # 序列长度
+bidirectional = False
+
+model = nn.GRU(num_input_feature, num_hidden_feature, num_hidden, bidirectional=bidirectional, batch_first=False)    # 输入特征长度，隐含层特征长度，隐含层个数
+input = torch.randn(num_sequence, batch_size, num_input_feature)    # [序列长度，batchsize，输入特征长度]
+h0 = torch.randn(num_hidden*2 if bidirectional else num_hidden, batch_size, num_hidden_feature)   # 隐含状态 [隐含层个数，batchsize，隐含层特征长度]
+output, hn = model(input, h0)    # 输出[序列长度，batchsize，隐含层特征长度]，隐含状态[隐含层个数，batchsize，隐含层特征长度]
+
+print('input', '      ', list(input.shape))
+print('h0', '      ', list(h0.shape))
+
+print('output', '      ', list(output.shape))
+print('hn', '      ', list(hn.shape))
+
+for k, v in model._parameters.items():
+    print(k, '      ', list(v.shape))
+```
+
+输出结果如下：
+
+```terminal
+input        [4, 3, 5]
+h0        [2, 3, 7]
+output        [4, 3, 7]
+hn        [2, 3, 7]
+weight_ih_l0        [21, 5]
+weight_hh_l0        [21, 7]
+bias_ih_l0        [21]
+bias_hh_l0        [21]
+weight_ih_l1        [21, 7]
+weight_hh_l1        [21, 7]
+bias_ih_l1        [21]
+bias_hh_l1        [21]
+```
+
+
+## 3. pytorch中GRU说明
+
+GRU总体和LSTM、RNN相差不大，只是计算公式的区别。
+
+上述代码中，当前层（共num_hidden = 2层）、序列当前输入（序列长度num_sequence = 4）会调用torch/nn/_functions/rnn.py 中的GRUCell函数，该函数如下：
+
+```python
+def GRUCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
+
+    if input.is_cuda:
+        gi = F.linear(input, w_ih)
+        gh = F.linear(hidden, w_hh)
+        state = fusedBackend.GRUFused.apply
+        return state(gi, gh, hidden) if b_ih is None else state(gi, gh, hidden, b_ih, b_hh)
+
+    # input: 3*5    w_ih: 21*5   b_ih: 21
+    # hidden: 3*7   w_hh: 21*7   b_hh: 21
+    gi = F.linear(input, w_ih, b_ih)     # [3, 21]
+    gh = F.linear(hidden, w_hh, b_hh)    # [3, 21]
+    i_r, i_i, i_n = gi.chunk(3, 1)       # 均为[3, 7]
+    h_r, h_i, h_n = gh.chunk(3, 1)       # 均为[3, 7]
+
+    resetgate = torch.sigmoid(i_r + h_r)   # 重置门 [3, 7]
+    inputgate = torch.sigmoid(i_i + h_i)   # [3, 7]
+    newgate = torch.tanh(i_n + resetgate * h_n)   # [3, 7]
+    hy = newgate + inputgate * (hidden - newgate)    # hy = newgate * (1 - inputgate) + inputgate * (hidden - newgate)  [3, 7]
+
+    return hy
+```
+
+上述GRUCell代码对应的矩阵运算如图2所示（第一层中，将3\*5的输入转换成3\*7的输出，第二层输入已经为3\*7，未画出）。
+
+![2](/assets/post/2021-08-16-gru/2shape.png)
+_图2_
+
+上述代码输入输出结果如图3所示。具体可参见LSTM的介绍。GRU和LSTM、RNN一样，在图3中都是先水平计算（计算当前层当前时刻所有序列结果），再垂直计算（计算不同层所有结果）。
+
+![2](/assets/post/2021-08-16-gru/3details.png)
+_图3_
+
+
+## 4. 反向传播
+
+见相关网址：
+
+<http://dprogrammer.org/rnn-lstm-gru>
+
+## 5. 输出结果和输出状态的关系
+
+在默认batch_first=False的情况下，输出Output[-1, :, :]和隐含状态hn[-1, :, :]相同，如图4所示。由图3可以得出相同结论：红色虚线框内最右上角的框，一方面拼接到输出（绿框）的最后一组，一方面拼接到t时刻状态（最右侧橙色框）的最后一组，因而Output[-1, :, :]和隐含状态hn[-1, :, :]相同。
+
+![2](/assets/post/2021-08-16-gru/4compare.png)
+_图4_

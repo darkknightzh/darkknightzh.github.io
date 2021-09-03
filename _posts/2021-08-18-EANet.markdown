@@ -26,16 +26,16 @@ math: true
 <https://github.com/xmu-xiaoma666/External-Attention-pytorch>
 
 
-# 1. 简介
+## p1. 简介
 
 注意力机制可以看做根据特征激活的重要性重新分配资源的机制。该论文提出external attention：只使用2个线性层和2个归一化层。
 
 ![1](/assets/post/2021-08-18-EANet/1.png)
 _图1_
 
-# 2. EANet
+## p2. EANet
 
-## 2.1 自注意力（Self-Attention）和外部注意力（External Attention）
+### p2.1 自注意力（Self-Attention）和外部注意力（External Attention）
 
 给定输入特征
 $$F\in { {\mathbb{R}}^{N\times d}}$$
@@ -99,7 +99,8 @@ $$F+{ {F}_{out}}$$
 $$O\left( dSN \right)$$
 ，其中d和S为超参数。作者发现，很小的S，如64，实验效果就很好。因而外部注意力比自注意力更搞笑，能够应用于大尺度的输入，另外，外部注意力的计算负荷等效于1*1卷积。
 
-## 2.2 归一化
+### p2.2 归一化
+
 自注意力中，使用Softmax来归一化注意力矩阵，确保
 $$\sum\nolimits_{j}{ { {\alpha }_{i,j}}=1}$$
 。该注意力矩阵对输入特征的尺度敏感，因为其每行元素之和为1（输入特征尺度越大，每个特征被归一化后的值越小）。因而本文使用<https://arxiv.org/abs/2012.09688v4>中提出的double-normalization。该方法分别归一化行和列，如下：
@@ -117,7 +118,8 @@ $${ {\alpha }_{i,j}}={ { { {\tilde{\alpha }}}_{i,j}}}/{\sum\limits_{k}{ { { {\ti
 ![2](/assets/post/2021-08-18-EANet/a1.png)
 _Algorithm 1_
 
-2.3 多头外部注意力（Multi-head external attention）
+### p2.3 多头外部注意力（Multi-head external attention）
+
 在不同通道多次计算自注意力，这种方式称作多头注意力（Multi-head self attention）。其能不火不同token之间的关系，提高single head self attention的能力。
 
 对外部注意力进行相应推广，多头外部注意力定义如下：
@@ -136,7 +138,7 @@ _图2_
 ![2](/assets/post/2021-08-18-EANet/a2.png)
 _Algorithm 2_
 
-# 3. 代码
+## p3. 代码
 
 EANet模型在model_torch.py中。
 
