@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "rnn"
-date:   2021-08-24 16:00:00 +0800
+date:   2021-08-12 16:00:00 +0800
 tags: [deep learning, algorithm]
 pin: true
 math: true
@@ -97,6 +97,7 @@ print('hn', '      ', list(hn.shape))
 for k, v in model._parameters.items():
     print(k, '      ', list(v.shape))
 ```
+
 对应上述代码，当bidirectional = False时，输出如下：
 
 ```terminal
@@ -117,6 +118,7 @@ weight_hh_l2        [20, 20]
 bias_ih_l2        [20]
 bias_hh_l2        [20]
 ```
+
 当bidirectional = True时，输出如下（图6只画了bidirectional = False的情况，当其为True时，未研究过。。。）：
 
 ```terminal
@@ -148,8 +150,8 @@ weight_ih_l2_reverse        [20, 40]
 weight_hh_l2_reverse        [20, 20]
 bias_ih_l2_reverse        [20]
 bias_hh_l2_reverse        [20]
-
 ```
+
 # 3. seq优先
 
 <https://zhuanlan.zhihu.com/p/32103001>指出了为什么rnn中默认第一维是seq，如图2、图3所示：

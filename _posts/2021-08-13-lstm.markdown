@@ -1,0 +1,187 @@
+---
+layout: post
+title:  "lstm"
+date:   2021-08-13 16:00:00 +0800
+tags: [deep learning, algorithm]
+pin: true
+math: true
+---
+
+<style> h1 { border-bottom: none } </style>
+
+转载请注明出处：
+
+<https://darkknightzh.github.io/posts/lstm>
+
+论文：
+
+<https://www.bioinf.jku.at/publications/older/2604.pdf>
+
+pytorch中LSTM参考论文：
+
+<https://arxiv.org/abs/1402.1128>
+
+参考网址：
+
+<http://colah.github.io/posts/2015-08-Understanding-LSTMs/>
+
+<https://pytorch.org/docs/stable/generated/torch.nn.LSTM.html>
+
+说明：本文默认均是batch_first=False。该参数只影响输入input和输出output的维度，不会影响隐含状态hidden state和单元状态cell state的维度。
+
+# 1. LSTM
+
+由于rnn只有一个隐含状态hidden state，对输入短期信号非常敏感，但无法解决长时依赖问题。因而LSTM（Long Short Term Memory networks）在RNN的基础上，增加了单元状态cell state，用来保存长期状态，从而解决了长时依赖问题。
+
+理解了rnn之后，LSTM就比较好理解了。主要是计算公式不同。LSTM结构如图1所示，LSTM计算公式如下，其中输入门
+$${ {i}_{t}}$$
+、遗忘门
+$${ {f}_{t}}$$
+、输出门
+$${ {o}_{t}}$$
+范围都是0-1之间，1代表完全保留，0代表完全丢弃。其中遗忘门
+$${ {f}_{t}}$$
+是对长期记忆
+$${ {C}_{t-1}}$$
+的保留程度，其对长期记忆
+$${ {C}_{t-1}}$$
+进行修正。输入门
+$${ {i}_{t}}$$
+是对当前输入
+$${ {\tilde{C}}_{t}}$$
+的保留程度，其对当前输入信息
+$${ {\tilde{C}}_{t}}$$
+进行修正。输出门
+$${ {o}_{t}}$$
+是对短期记忆
+$$\tanh \left( { {C}_{t}} \right)$$
+的保留程度，其对短期记忆
+$$\tanh \left( { {C}_{t}} \right)$$
+进行修正。
+
+$${ {f}_{t}}=\sigma \left( { {W}_{f}}\centerdot \left[ { {h}_{t-1}},{ {x}_{t}} \right]+{ {b}_{f}} \right)$$ 
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;遗忘门
+
+$${ {i}_{t}}=\sigma \left( { {W}_{i}}\centerdot \left[ { {h}_{t-1}},{ {x}_{t}} \right]+{ {b}_{i}} \right)$$
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;输入门
+
+$${ {\tilde{C}}_{t}}=\tanh \left( { {W}_{C}}\centerdot \left[ { {h}_{t-1}},{ {x}_{t}} \right]+{ {b}_{C}} \right)$$
+&nbsp;
+
+$${ {C}_{t}}={ {f}_{t}}*{ {C}_{t-1}}+{ {i}_{t}}*{ {\tilde{C}}_{t}}$$
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*为点乘
+
+$${ {o}_{t}}=\sigma \left( { {W}_{o}}\centerdot \left[ { {h}_{t-1}},{ {x}_{t}} \right]+{ {b}_{o}} \right)$$
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;输出门
+
+$${ {h}_{t}}={ {o}_{t}}*\tanh \left( { {C}_{t}} \right)$$
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*为点乘
+
+![1](/assets/post/2021-08-13-lstm/1lstm.png)
+_图1 lstm_
+
+# 2. 代码
+
+```python
+import torch
+from torch import nn
+
+num_input_feature = 5     # 输入特征数量
+num_hidden_feature = 7    # 隐含层特征数量
+num_hidden = 2             # 隐含层层数
+batch_size = 3
+num_sequence = 4           # 序列长度
+bidirectional = False
+
+model = nn.LSTM(num_input_feature, num_hidden_feature, num_hidden, bidirectional=bidirectional, batch_first=False)    # 输入特征长度，隐含层特征长度，隐含层个数
+input = torch.randn(num_sequence, batch_size, num_input_feature)    # [序列长度，batchsize，输入特征长度]
+h0 = torch.randn(num_hidden*2 if bidirectional else num_hidden, batch_size, num_hidden_feature)   # cell state初始状态 [隐含层个数，batchsize，隐含层特征长度]
+c0 = torch.randn(num_hidden*2 if bidirectional else num_hidden, batch_size, num_hidden_feature)   # hidden state初始状态 [隐含层个数，batchsize，隐含层特征长度]
+output, (hn, cn) = model(input, (h0, c0))    # 输出[序列长度，batchsize，隐含层特征长度]，(cell state, hidden state)
+
+print('input', '      ', list(input.shape))
+print('h0', '      ', list(h0.shape))
+
+print('output', '      ', list(output.shape))
+print('hn', '      ', list(hn.shape))
+
+print('c0', '      ', list(c0.shape))
+print('cn', '      ', list(hn.shape))
+
+for k, v in model._parameters.items():
+    print(k, '      ', list(v.shape))
+```
+
+上述代码输出如下：
+
+```terminal
+input        [4, 3, 5]
+h0        [2, 3, 7]
+output        [4, 3, 7]
+hn        [2, 3, 7]
+c0        [2, 3, 7]
+cn        [2, 3, 7]
+weight_ih_l0        [28, 5]
+weight_hh_l0        [28, 7]
+bias_ih_l0        [28]
+bias_hh_l0        [28]
+weight_ih_l1        [28, 7]
+weight_hh_l1        [28, 7]
+bias_ih_l1        [28]
+bias_hh_l1        [28]
+```
+
+# 3. pytorch中LSTM详细说明
+
+上述代码中，当前层（共num_hidden = 2层）、序列当前输入（序列长度num_sequence = 4）会调用torch/nn/_functions/rnn.py 中的LSTMCell函数，该函数如下：
+
+```python
+def LSTMCell(input, hidden, w_ih, w_hh, b_ih=None, b_hh=None):
+    if input.is_cuda:
+        igates = F.linear(input, w_ih)
+        hgates = F.linear(hidden[0], w_hh)
+        state = fusedBackend.LSTMFused.apply
+        return state(igates, hgates, hidden[1]) if b_ih is None else state(igates, hgates, hidden[1], b_ih, b_hh)
+
+    hx, cx = hidden   # hx: 3*7    cx: 3*7
+    
+    # input: 3*5   w_ih: 28*5   b_ih: 28
+    # hx: 3*7   w_hh: 28*7   b_hh: 28
+    gates = F.linear(input, w_ih, b_ih) + F.linear(hx, w_hh, b_hh)   # gates: 3*28
+    
+    ingate, forgetgate, cellgate, outgate = gates.chunk(4, 1)   # 4个3*7的状态
+
+    ingate = torch.sigmoid(ingate)           # 得到相应的门
+    forgetgate = torch.sigmoid(forgetgate)
+    cellgate = torch.tanh(cellgate)
+    outgate = torch.sigmoid(outgate)
+
+    cy = (forgetgate * cx) + (ingate * cellgate)   # 计算ct   3*7
+    hy = outgate * torch.tanh(cy)                  # 计算ht   3*7
+
+    return hy, cy
+```
+
+上述LSTMCell代码对应的矩阵运算如图2所示（第一层中，将3\*5的输入转换成3\*7的输出，第二层输入已经为3\*7，未画出）。
+
+![2](/assets/post/2021-08-13-lstm/2shape.png)
+_图2_
+
+上述代码输入输出结果如图3所示。红色虚线框内为当前时刻t时的相应结果。输入4\*3\*5的矩阵（batch_first=False，即第一维为seq），拆分成4个3\*5的矩阵，第一个3\*5的当前序列和输入的3\*7的单元状态
+$${ {C}_{t-1}}$$
+和3\*7的隐含状态
+$${ {h}_{t-1}}$$
+按照图2的方式进行运算，得到3\*7的单元状态及3\*7的隐含状态，而后下一个3\*5的当前序列和此时的3\*7的单元状态及3\*7的隐含状态继续进行图2的运算，以此类推，直到最后一个3\*5的当前序列。至此第一层（上面代码共num_hidden = 2层）LSTM计算完毕。第一层的输出再作为第二层的输入进行计算。直至最后一层计算完毕，得到此时的单元状态和隐含状态。最终将最后一层所有的3\*7的隐含状态拼接，得到最终的4\*3\*7的输出（绿框），同时将每一层最后一个3\*5的序列的输出（单元状态和隐含状态）各自进行拼接，得到t时刻最终的单元状态
+$${ {C}_{t}}$$
+和隐含状态
+$${ {h}_{t}}$$
+。LSTM和RNN一样，在图3中都是先水平计算（计算当前层当前时刻所有序列结果），再垂直计算（计算不同层所有结果）。
+
+![3](/assets/post/2021-08-13-lstm/3details.png)
+_图3_
+
+# 4. 反向传播
+
+见相关网址：
+
+<https://www.cnblogs.com/bonelee/p/12106075.html>
