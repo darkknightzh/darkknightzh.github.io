@@ -135,7 +135,11 @@ $$\begin{align}
 
 $$\frac{\partial L}{\partial { {x}_{ij}}}\text{=}\sum\limits_{\text{k}=1}^{N}{\frac{\partial L}{\partial { {y}_{ik}}}{ {w}_{jk}}}$$
 
-也即L关于X的第i行第j列的元素xij的偏导数，是L关于Y的第i行的偏导数和WT的第j列的元素的点乘（对应元素相乘并相加）的结果。
+也即L关于X的第i行第j列的元素
+$$x_{ij}$$
+的偏导数，是L关于Y的第i行的偏导数和
+$$W^T$$
+的第j列的元素的点乘（对应元素相乘并相加）的结果。
 
 ④ 写成矩阵形式：
 
@@ -144,7 +148,9 @@ $$\frac{\partial L}{\partial X}=\frac{\partial L}{\partial Y}{ {W}^{T}}$$
 
 **2. L关于W的偏导数**
 
-① Y关于wij的偏导数：
+① Y关于
+$$w_{ij}$$
+的偏导数：
 
 $$\frac{\partial Y}{\partial { {w}_{ij}}}=\left[ \begin{matrix}
    \frac{\partial { {y}_{11}}}{\partial { {w}_{ij}}} & ... & \frac{\partial { {y}_{1N}}}{\partial { {w}_{ij}}}  \\
@@ -219,7 +225,9 @@ $$\begin{align}
 
 $$\frac{\partial L}{\partial { {w}_{ij}}}=\sum\limits_{k=1}^{M}{ { {x}_{ki}}\frac{\partial L}{\partial { {y}_{kj}}}}$$
 
-也即L关于W的第i行第j列的元素wij的偏导数，是
+也即L关于W的第i行第j列的元素
+$$w_{ij}$$
+的偏导数，是
 $${ {x}^{T}}$$
 的第i行的元素和L关于Y的第j列的偏导数的点乘（对应元素相乘并相加）的结果。
 
