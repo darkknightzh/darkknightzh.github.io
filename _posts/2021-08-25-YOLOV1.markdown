@@ -2,7 +2,7 @@
 layout: post
 title:  "YOLOV1 You Only Look Once: Unified, Real-Time Object Detection"
 date:   2021-08-23 16:00:00 +0800
-tags: [deep learning, algorithm]
+tags: [deep learning, algorithm, detection]
 pin: true
 math: true
 ---
