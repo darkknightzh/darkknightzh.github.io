@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Softmax导数的计算"
-date:   2021-07-02 16:00:00 +0800
+date:   2021-07-03 16:00:00 +0800
 tags: [deep learning, algorithm]
 pin: true
 math: true
