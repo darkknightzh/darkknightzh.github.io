@@ -2,7 +2,7 @@
 layout: post
 title:  "CenterNet Objects as Points(代码未添加)"
 date:   2021-08-23 16:00:00 +0800
-tags: [deep learning, algorithm, transformers]
+tags: [deep learning, algorithm]
 pin: true
 math: true
 ---

@@ -2,7 +2,7 @@
 layout: post
 title:  "MTCNN Joint Face Detection and Alignment using Multi-task Cascaded Convolutional Networks(代码未添加)"
 date:   2021-08-24 16:00:00 +0800
-tags: [deep learning, algorithm, transformers]
+tags: [deep learning, algorithm]
 pin: true
 math: true
 ---
