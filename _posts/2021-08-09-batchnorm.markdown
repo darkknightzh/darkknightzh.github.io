@@ -13,6 +13,7 @@ math: true
 
 <https://darkknightzh.github.io/posts/batchnorm>
 
+<br>
 
 **(1) Internal Covariate Shift**
 

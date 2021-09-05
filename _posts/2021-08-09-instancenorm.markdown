@@ -18,6 +18,8 @@ math: true
 
 <https://arxiv.org/abs/1607.08022>
 
+<br>
+
 Layer Normalization不依赖batch size，统计同层内所有神经元响应值的均值和方差，Instance Normalization则将统计范围进一步缩小到HW维度。
 
 令

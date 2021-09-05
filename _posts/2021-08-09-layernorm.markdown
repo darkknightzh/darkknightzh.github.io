@@ -17,6 +17,8 @@ math: true
 
 <https://arxiv.org/abs/1607.06450>
 
+<br>
+
 假设第l层第i个输入为
 $$a_{i}^{l}$$
 ，忽略偏置时，令

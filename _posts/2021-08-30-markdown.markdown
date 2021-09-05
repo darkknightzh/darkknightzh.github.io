@@ -118,8 +118,8 @@ $ git clone https://github.com/USERNAME/USERNAME.github.io.git -b master --singl
 
 # 图片
 
-<!-- ![1](/assets/post/2000-01-01-text-and-typography/1.jpg){: width="100"}
-_图片1 中心对齐_ -->
+![1](/assets/post/2000-01-01-text-and-typography/1.jpg){: width="100"}
+_图片1 中心对齐_
 
 
 
