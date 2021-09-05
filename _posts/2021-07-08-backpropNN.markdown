@@ -175,10 +175,6 @@ $$\delta _{d}^{L}=\frac{\partial { {C}_{d}}}{\partial z_{d}^{k}}=\frac{\partial 
 
 $$\frac{\partial C}{\partial w_{ij}^{L}}=\delta _{i}^{L}a_{j}^{k-1}\text{=}\left( a_{d}^{L}-{ {y}_{i}} \right)\centerdot { {\sigma }^{'}}\left( z_{i}^{L} \right)a_{j}^{L-1} \tag{13}$$
 
-其中
-$$\odot $$
-表示Hadamard乘积，代表对应元素相乘。
-
 注：若此处不限定
 $$C(X,\theta )$$
 的具体形式（第d个输入的损失用
@@ -276,6 +272,9 @@ $${ {\mathbf{\delta }}^{L}}=\left( { {\mathbf{a}}^{L}}-\mathbf{y} \right)\odot {
 $${ {\Sigma }^{'}}\left( { {\mathbf{z}}^{L}} \right)$$
 为对角矩阵，其对角线上的值为
 $${ {\sigma }^{'}}\left( { {\mathbf{z}}^{L}} \right)$$
+，
+$$\odot $$
+表示Hadamard乘积，代表对应元素相乘。
 
 公式(13)：
 
