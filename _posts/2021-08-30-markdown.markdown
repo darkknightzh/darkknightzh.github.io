@@ -173,3 +173,6 @@ $${ {K}_{Sim}}({ {P}_{i}},{ {P}_{j}}|{ {\sigma }_{1}})=\left\{ \begin{matrix}
    \sum\nolimits_{n}{\tanh \frac{c_{i}^{n}}{ { {\sigma }_{1}}}\tanh \frac{c_{j}^{n}}{ { {\sigma }_{1}}}} & if\text{ }k_{j}^{n} is within B(k_{i}^{n})  \\
    0 & otherwise  \\
 \end{matrix} \right.$$
+
+
+&nbsp;
