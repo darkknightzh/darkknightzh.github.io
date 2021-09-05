@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "卷积反向传播公式的推导"
-date:   2021-07-02 16:00:00 +0800
+date:   2021-07-09 16:00:00 +0800
 tags: [deep learning, algorithm]
 pin: true
 math: true
