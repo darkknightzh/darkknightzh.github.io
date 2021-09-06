@@ -20,6 +20,8 @@ math: true
 
 <https://zhuanlan.zhihu.com/p/257145620>
 
+说明：大部分都是翻译自第一个参考网址
+
 <br>
 
 
