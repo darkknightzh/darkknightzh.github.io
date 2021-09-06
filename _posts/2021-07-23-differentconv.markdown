@@ -242,7 +242,7 @@ $$\left( F{ {*}_{l}}k \right)\left( \mathbf{p} \right)=\sum\nolimits_{\mathbf{s}
 
 # P6. 1x1/Pointwise Convolutions
 
-1\*1卷积最初在Network-in-network(NiN, https://arxiv.org/abs/1312.4400)中提出，后被广泛用于Inception中（https://arxiv.org/abs/1409.4842）。主要用于通道变换，在不改变输入特征的宽高的情况下，对通道数进行升维或者降维。卷积核大小为1\*1，卷积核参数量为Cout\*Cin\*1\*1，其中Cout个Cin\*1\*1的卷积核和输入特征进行乘法，得到Cout个H\*W的临时结果，并将这些结果拼接，得到Cout\*H\*W的输出结果，在未改变特征宽高的情况下，改变了特征的通道数。
+1\*1卷积最初在Network-in-network(NiN, <https://arxiv.org/abs/1312.4400>)中提出，后被广泛用于Inception中（<https://arxiv.org/abs/1409.4842>）。主要用于通道变换，在不改变输入特征的宽高的情况下，对通道数进行升维或者降维。卷积核大小为1\*1，卷积核参数量为Cout\*Cin\*1\*1，其中Cout个Cin\*1\*1的卷积核和输入特征进行乘法，得到Cout个H\*W的临时结果，并将这些结果拼接，得到Cout\*H\*W的输出结果，在未改变特征宽高的情况下，改变了特征的通道数。
 
 1\*1卷积的优点如下：
 
