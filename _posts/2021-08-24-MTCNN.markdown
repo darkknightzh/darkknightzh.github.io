@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "MTCNN Joint Face Detection and Alignment using Multi-task Cascaded Convolutional Networks(代码未添加)"
+title:  "MTCNN Joint Face Detection and Alignment using Multi-task Cascaded Convolutional Networks"
 date:   2021-08-24 16:00:00 +0800
 tags: [deep learning, algorithm, detection]
 pin: true
@@ -108,4 +108,664 @@ $$\beta _{i}^{j}\in \left\{ 0,1 \right\}$$
 
 # P3. 代码
 
-之后补全
+## P3.1 检测结果
+
+使用如下代码可检测人脸，并显示。
+
+### 代码折叠
+<details>
+
+```python
+from PIL import Image
+from models.mtcnn import MTCNN
+import cv2
+import numpy as np
+
+img = cv2.imread('data/multiface.jpg')
+mtcnn = MTCNN(keep_all=True)      # 初始化MTCNN类
+batch_boxes, batch_probs, batch_points = mtcnn.detect(img[...,::-1], landmarks=True)  # 返回检测到的bbox[K,4]、是人脸的得分[K]、人脸关键点坐标[K,5,2]
+batch_boxes = batch_boxes.astype(np.int32)   # 检测到的bbox[K,4]  k为检测到的人脸数量
+batch_points = batch_points.astype(np.int32)  # 检测到的人脸关键点坐标[K,5,2]
+
+for i in range(batch_probs.shape[0]):   # 依次遍历每个检测到的人脸
+    _rect = batch_boxes[i]   # 当前人脸框  [4]
+    cv2.rectangle(img, (_rect[0], _rect[1]), (_rect[2], _rect[3]), (0, 0, 255), 2)
+
+    facial = batch_points[i]    # 当前人脸关键点  [5,2]
+    for j in range(5):
+        cv2.circle(img, (facial[j, 0], facial[j, 1]), 1, (0, 255, 0), 2)
+ 
+cv2.imshow('img', img)
+cv2.waitKey(0)
+cv2.destroyAllWindows()
+```
+</details>
+
+检测结果如图3：
+
+![2](/assets/post/2021-08-24-MTCNN/3result.png)
+_图3_
+
+上述代码调用models/mtcnn.py中的MTCNN类，该类可使用forward函数得到裁剪的人脸，或者使用detect函数得到检测到的bbox、是人脸的得分、人脸关键点坐标等信息。下面进行介绍。
+
+## P3.2 MTCNN类
+
+MTCNN初始化如下，主要用于初始化pnet，rnet，onet三个网络。
+
+<details>
+
+```python
+class MTCNN(nn.Module):
+    """MTCNN face detection module.
+
+    This class loads pretrained P-, R-, and O-nets and returns images cropped to include the face
+    only, given raw input images of one of the following types:
+        - PIL image or list of PIL images
+        - numpy.ndarray (uint8) representing either a single image (3D) or a batch of images (4D).
+    Cropped faces can optionally be saved to file
+    also.
+    
+    Keyword Arguments:
+        image_size {int} -- Output image size in pixels. The image will be square. (default: {160})
+        margin {int} -- Margin to add to bounding box, in terms of pixels in the final image. Note that the application of the margin differs slightly from the davidsandberg/facenet
+            repo, which applies the margin to the original image before resizing, making the margin dependent on the original image size (this is a bug in davidsandberg/facenet).
+            (default: {0})
+        min_face_size {int} -- Minimum face size to search for. (default: {20})
+        thresholds {list} -- MTCNN face detection thresholds (default: {[0.6, 0.7, 0.7]})
+        factor {float} -- Factor used to create a scaling pyramid of face sizes. (default: {0.709})
+        post_process {bool} -- Whether or not to post process images tensors before returning.
+            (default: {True})
+        select_largest {bool} -- If True, if multiple faces are detected, the largest is returned.
+            If False, the face with the highest detection probability is returned.
+            (default: {True})
+        selection_method {string} -- Which heuristic to use for selection. Default None. If
+            specified, will override select_largest:
+                    "probability": highest probability selected
+                    "largest": largest box selected
+                    "largest_over_threshold": largest box over a certain probability selected
+                    "center_weighted_size": box size minus weighted squared offset from image center
+                (default: {None})
+        keep_all {bool} -- If True, all detected faces are returned, in the order dictated by the
+            select_largest parameter. If a save_path is specified, the first face is saved to that
+            path and the remaining faces are saved to <save_path>1, <save_path>2 etc.
+            (default: {False})
+        device {torch.device} -- The device on which to run neural net passes. Image tensors and
+            models are copied to this device before running forward passes. (default: {None})
+    """
+
+    def __init__(self, image_size=160, margin=0, min_face_size=20, thresholds=[0.6, 0.7, 0.7], factor=0.709, post_process=True, select_largest=True, 
+                 selection_method=None, keep_all=False, device=None):
+        super().__init__()
+
+        self.image_size = image_size
+        self.margin = margin
+        self.min_face_size = min_face_size
+        self.thresholds = thresholds   # p-net, R-net, O-net的三个阈值
+        self.factor = factor    # 创建人脸金字塔时缩放比例
+        self.post_process = post_process
+        self.select_largest = select_largest
+        self.keep_all = keep_all
+        self.selection_method = selection_method   # 默认None
+
+        self.pnet = PNet()   # 三个检测网络
+        self.rnet = RNet()
+        self.onet = ONet()
+
+        self.device = torch.device('cpu')
+        if device is not None:
+            self.device = device
+            self.to(device)
+
+        if not self.selection_method:
+            self.selection_method = 'largest' if self.select_largest else 'probability'
+```
+</details>
+
+## P3.3 P-Net
+
+该函数和图2中pnet不同，没有人脸关键点坐标。网络如图4。
+
+![4](/assets/post/2021-08-24-MTCNN/4pnet.png)
+_图4 pnet_
+
+代码如下:
+
+<details>
+
+```python
+class PNet(nn.Module):  # 该函数和论文不一样，未预测人脸关键点坐标
+    """MTCNN PNet.
+    
+    Keyword Arguments:
+        pretrained {bool} -- Whether or not to load saved pretrained weights (default: {True})
+    """
+
+    def __init__(self, pretrained=True):
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(3, 10, kernel_size=3)
+        self.prelu1 = nn.PReLU(10)
+        self.pool1 = nn.MaxPool2d(2, 2, ceil_mode=True)
+        self.conv2 = nn.Conv2d(10, 16, kernel_size=3)
+        self.prelu2 = nn.PReLU(16)
+        self.conv3 = nn.Conv2d(16, 32, kernel_size=3)
+        self.prelu3 = nn.PReLU(32)
+        self.conv4_1 = nn.Conv2d(32, 2, kernel_size=1)
+        self.softmax4_1 = nn.Softmax(dim=1)
+        self.conv4_2 = nn.Conv2d(32, 4, kernel_size=1)
+
+        self.training = False
+
+        if pretrained:
+            state_dict_path = os.path.join(os.path.dirname(__file__), '../data/pnet.pt')
+            state_dict = torch.load(state_dict_path)
+            self.load_state_dict(state_dict)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.prelu1(x)
+        x = self.pool1(x)
+        x = self.conv2(x)
+        x = self.prelu2(x)
+        x = self.conv3(x)
+        x = self.prelu3(x)
+        a = self.conv4_1(x)    # 是否人脸
+        a = self.softmax4_1(a)   # 是否人脸的概率
+        b = self.conv4_2(x)   # bbox预测
+        return b, a   # 返回预测的bbox，是否人脸的概率
+```
+</details>
+
+## P3.4 R-Net
+
+该函数和图2中rnet不同，没有人脸关键点坐标。网络如图5。
+
+![5](/assets/post/2021-08-24-MTCNN/5rnet.png)
+_图5 rnet_
+
+代码如下：
+
+<details>
+
+```python
+class RNet(nn.Module):
+    """MTCNN RNet.
+    
+    Keyword Arguments:
+        pretrained {bool} -- Whether or not to load saved pretrained weights (default: {True})
+    """
+
+    def __init__(self, pretrained=True):
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(3, 28, kernel_size=3)
+        self.prelu1 = nn.PReLU(28)
+        self.pool1 = nn.MaxPool2d(3, 2, ceil_mode=True)
+        self.conv2 = nn.Conv2d(28, 48, kernel_size=3)
+        self.prelu2 = nn.PReLU(48)
+        self.pool2 = nn.MaxPool2d(3, 2, ceil_mode=True)
+        self.conv3 = nn.Conv2d(48, 64, kernel_size=2)
+        self.prelu3 = nn.PReLU(64)
+        self.dense4 = nn.Linear(576, 128)
+        self.prelu4 = nn.PReLU(128)
+        self.dense5_1 = nn.Linear(128, 2)
+        self.softmax5_1 = nn.Softmax(dim=1)
+        self.dense5_2 = nn.Linear(128, 4)
+
+        self.training = False
+
+        if pretrained:
+            state_dict_path = os.path.join(os.path.dirname(__file__), '../data/rnet.pt')
+            state_dict = torch.load(state_dict_path)
+            self.load_state_dict(state_dict)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.prelu1(x)
+        x = self.pool1(x)
+        x = self.conv2(x)
+        x = self.prelu2(x)
+        x = self.pool2(x)
+        x = self.conv3(x)
+        x = self.prelu3(x)   # BCHW
+        x = x.permute(0, 3, 2, 1).contiguous()   # BHWC
+        x = self.dense4(x.view(x.shape[0], -1))   # [B,HWC]
+        x = self.prelu4(x)    # [B,HWC]
+        a = self.dense5_1(x)   # 是否人脸
+        a = self.softmax5_1(a)  # 是否人脸的概率
+        b = self.dense5_2(x)  # bbox预测
+        return b, a  # 返回预测的bbox，是否人脸的概率
+```
+</details>
+
+## P3.5 O-Net
+
+该函数和图2中onet相同。网络如图6。
+
+![6](/assets/post/2021-08-24-MTCNN/6onet.png)
+_图6 onet_
+
+代码如下：
+
+<details>
+
+```python
+class ONet(nn.Module):
+    """MTCNN ONet.
+    
+    Keyword Arguments:
+        pretrained {bool} -- Whether or not to load saved pretrained weights (default: {True})
+    """
+
+    def __init__(self, pretrained=True):
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3)
+        self.prelu1 = nn.PReLU(32)
+        self.pool1 = nn.MaxPool2d(3, 2, ceil_mode=True)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3)
+        self.prelu2 = nn.PReLU(64)
+        self.pool2 = nn.MaxPool2d(3, 2, ceil_mode=True)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=3)
+        self.prelu3 = nn.PReLU(64)
+        self.pool3 = nn.MaxPool2d(2, 2, ceil_mode=True)
+        self.conv4 = nn.Conv2d(64, 128, kernel_size=2)
+        self.prelu4 = nn.PReLU(128)
+        self.dense5 = nn.Linear(1152, 256)
+        self.prelu5 = nn.PReLU(256)
+        self.dense6_1 = nn.Linear(256, 2)
+        self.softmax6_1 = nn.Softmax(dim=1)
+        self.dense6_2 = nn.Linear(256, 4)
+        self.dense6_3 = nn.Linear(256, 10)
+
+        self.training = False
+
+        if pretrained:
+            state_dict_path = os.path.join(os.path.dirname(__file__), '../data/onet.pt')
+            state_dict = torch.load(state_dict_path)
+            self.load_state_dict(state_dict)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.prelu1(x)
+        x = self.pool1(x)
+        x = self.conv2(x)
+        x = self.prelu2(x)
+        x = self.pool2(x)
+        x = self.conv3(x)
+        x = self.prelu3(x)
+        x = self.pool3(x)
+        x = self.conv4(x)
+        x = self.prelu4(x)     # BCHW
+        x = x.permute(0, 3, 2, 1).contiguous()   # BHWC
+        x = self.dense5(x.view(x.shape[0], -1)) # [B,HWC]
+        x = self.prelu5(x)     # [B,HWC]
+        a = self.dense6_1(x)     # 是否人脸
+        a = self.softmax6_1(a)    # 是否人脸的概率
+        b = self.dense6_2(x)    # bbox预测
+        c = self.dense6_3(x)   # 人脸关键点预测
+        return b, c, a  # 返回预测的bbox，预测的人脸关键点，是否人脸的概率
+```
+</details>
+
+## P3.6 detect函数
+
+<details>
+
+```python
+def detect(self, img, landmarks=False):  # 检测PIL图像的人脸，返回bbox和可选的面部关键点
+        """Detect all faces in PIL image and return bounding boxes and optional facial landmarks.
+
+        This method is used by the forward method and is also useful for face detection tasks that require lower-level handling of bounding boxes and facial 
+        landmarks (e.g., face tracking). The functionality of the forward function can be emulated by using this method followed by the extract_face() function.
+        
+        Arguments:
+            img {PIL.Image, np.ndarray, or list} -- A PIL image, np.ndarray, torch.Tensor, or list.
+
+        Keyword Arguments:
+            landmarks {bool} -- Whether to return facial landmarks in addition to bounding boxes. (default: {False})
+        
+        Returns:
+            tuple(numpy.ndarray, list) -- For N detected faces, a tuple containing an Nx4 array of bounding boxes and a length N list of detection probabilities.
+                Returned boxes will be sorted in descending order by detection probability if self.select_largest=False, otherwise the largest face will be returned first.
+                If `img` is a list of images, the items returned have an extra dimension (batch) as the first dimension. Optionally, a third item, the facial landmarks,
+                are returned if `landmarks=True`.
+
+        Example:
+        >>> from PIL import Image, ImageDraw
+        >>> from facenet_pytorch import MTCNN, extract_face
+        >>> mtcnn = MTCNN(keep_all=True)
+        >>> boxes, probs, points = mtcnn.detect(img, landmarks=True)
+        >>> # Draw boxes and save faces
+        >>> img_draw = img.copy()
+        >>> draw = ImageDraw.Draw(img_draw)
+        >>> for i, (box, point) in enumerate(zip(boxes, points)):
+        ...     draw.rectangle(box.tolist(), width=5)
+        ...     for p in point:
+        ...         draw.rectangle((p - 10).tolist() + (p + 10).tolist(), width=10)
+        ...     extract_face(img, box, save_path='detected_face_{}.png'.format(i))
+        >>> img_draw.save('annotated_faces.png')
+        """
+
+        with torch.no_grad():
+            batch_boxes, batch_points = detect_face(img, self.min_face_size, self.pnet, self.rnet, self.onet, self.thresholds, self.factor, self.device)   #  最终检测的box[B,K,5]和人脸关键点[B,K,5,2]  
+
+        boxes, probs, points = [], [], []
+        for box, point in zip(batch_boxes, batch_points):
+            box = np.array(box)
+            point = np.array(point)
+            if len(box) == 0:
+                boxes.append(None)
+                probs.append([None])
+                points.append(None)
+            elif self.select_largest:
+                box_order = np.argsort((box[:, 2] - box[:, 0]) * (box[:, 3] - box[:, 1]))[::-1]  # 人脸面积从大到小的索引
+                box = box[box_order]
+                point = point[box_order]
+                boxes.append(box[:, :4])
+                probs.append(box[:, 4])
+                points.append(point)
+            else:
+                boxes.append(box[:, :4])
+                probs.append(box[:, 4])
+                points.append(point)
+        boxes = np.array(boxes)  # [B,K,4]
+        probs = np.array(probs)  # [B,K]
+        points = np.array(points)  # [B,K,5,2]  
+
+        if (not isinstance(img, (list, tuple)) and not (isinstance(img, np.ndarray) and len(img.shape) == 4) and not (isinstance(img, torch.Tensor) and len(img.shape) == 4)): # 去掉batch
+            boxes = boxes[0]  # [K,4]
+            probs = probs[0]  # [K]
+            points = points[0]  # [K,5,2]  
+
+        if landmarks:
+            return boxes, probs, points  # 返回检测到的bbox[K,4]、是人脸的得分[K]、人脸关键点坐标[K,5,2]
+
+        return boxes, probs  # 返回检测到的bbox[K,4]、是人脸的得分[K]
+```
+</details>
+
+## P3.7 detect_face函数
+
+detect函数调用detect_face，其流程如图如7所示。
+
+![7](/assets/post/2021-08-24-MTCNN/7facedetect.png)
+_图7_
+
+代码如下：
+
+<details>
+
+```python
+def detect_face(imgs, minsize, pnet, rnet, onet, threshold, factor, device):
+    if isinstance(imgs, (np.ndarray, torch.Tensor)):
+        if isinstance(imgs,np.ndarray):
+            imgs = torch.as_tensor(imgs.copy(), device=device)
+
+        if isinstance(imgs,torch.Tensor):
+            imgs = torch.as_tensor(imgs, device=device)
+
+        if len(imgs.shape) == 3:
+            imgs = imgs.unsqueeze(0)   # HWC转BHWC
+    else:
+        if not isinstance(imgs, (list, tuple)):
+            imgs = [imgs]
+        if any(img.size != imgs[0].size for img in imgs):
+            raise Exception("MTCNN batch processing only compatible with equal-dimension images.")
+        imgs = np.stack([np.uint8(img) for img in imgs])
+        imgs = torch.as_tensor(imgs.copy(), device=device)
+
+    model_dtype = next(pnet.parameters()).dtype
+    imgs = imgs.permute(0, 3, 1, 2).type(model_dtype)   # BCHW
+
+    batch_size = len(imgs)
+    h, w = imgs.shape[2:4]
+    m = 12.0 / minsize   # minsize默认20，m=0.6
+    minl = min(h, w)   # 图像宽高的最小值
+    minl = minl * m
+    
+    scale_i = m  
+    scales = []    # 图像金字塔的缩放比例 Create scale pyramid
+    while minl >= 12:
+        scales.append(scale_i)
+        scale_i = scale_i * factor
+        minl = minl * factor   # minl按照factor依次缩小，直到不超过12为止
+
+    boxes = []    # First stage
+    image_inds = []
+
+    scale_picks = []
+
+    all_i = 0
+    offset = 0
+    for scale in scales:
+        im_data = imresample(imgs, (int(h * scale + 1), int(w * scale + 1)))  # 将图像缩放到指定大小
+        im_data = (im_data - 127.5) * 0.0078125   # 缩放图像像素
+        reg, probs = pnet(im_data)   # 得到pnet预测的bbox、是否人脸的概率
+        
+        # 9=2（起点坐标）+2（终点坐标）+1（分值）+4（回归的归一化坐标偏移）
+        boxes_scale, image_inds_scale = generateBoundingBox(reg, probs[:, 1], scale, threshold[0])   # [k,9]的bbox, [k]的图像在当前batch中的索引，probs[:, 1]为人脸的概率（0为背景的概率）
+        boxes.append(boxes_scale)
+        image_inds.append(image_inds_scale)
+
+        pick = batched_nms(boxes_scale[:, :4], boxes_scale[:, 4], image_inds_scale, 0.5)   # boxes_scale[:, :4]为x1,y1,x2,y2格式。pick为nms后保留的box的索引
+        scale_picks.append(pick + offset)
+        offset += boxes_scale.shape[0]
+
+    boxes = torch.cat(boxes, dim=0)   # [k,9]
+    image_inds = torch.cat(image_inds, dim=0)   # [k]
+
+    scale_picks = torch.cat(scale_picks, dim=0)   # [k2]   k2<=k
+    
+    boxes, image_inds = boxes[scale_picks], image_inds[scale_picks]   # [k2,9]  [k2]   nms抑制之后的bbox和当前batch中的图像索引  # NMS within each scale + image
+
+    pick = batched_nms(boxes[:, :4], boxes[:, 4], image_inds, 0.7)   # 再一次nms   # NMS within each image
+    boxes, image_inds = boxes[pick], image_inds[pick]  # [k3,9]  [k3]   k3<=k2
+
+    regw = boxes[:, 2] - boxes[:, 0]   # 预测的框的宽高
+    regh = boxes[:, 3] - boxes[:, 1]
+    qq1 = boxes[:, 0] + boxes[:, 5] * regw   # [k3]  预测框的坐标    # 预测的坐标 + 预测的归一化偏移 * 预测的宽高
+    qq2 = boxes[:, 1] + boxes[:, 6] * regh
+    qq3 = boxes[:, 2] + boxes[:, 7] * regw
+    qq4 = boxes[:, 3] + boxes[:, 8] * regh
+    boxes = torch.stack([qq1, qq2, qq3, qq4, boxes[:, 4]]).permute(1, 0)  # [k3,5]   预测框+预测分值
+    boxes = rerec(boxes)   # 对boxes进行偏移，得到正方形的box  [k3,5]
+    y, ey, x, ex = pad(boxes, w, h)     # 得到限制在图像内的坐标，均为[k3]
+    
+    if len(boxes) > 0:    # Second stage
+        im_data = []
+        for k in range(len(y)):
+            if ey[k] > (y[k] - 1) and ex[k] > (x[k] - 1):   # 终点坐标大于起点坐标
+                img_k = imgs[image_inds[k], :, (y[k] - 1):ey[k], (x[k] - 1):ex[k]].unsqueeze(0)     # 得到pnet检测后的人脸图像
+                im_data.append(imresample(img_k, (24, 24)))    # 将图像缩放到24*24
+        im_data = torch.cat(im_data, dim=0)   # [k3,3,24,24]
+        im_data = (im_data - 127.5) * 0.0078125   # 缩放图像像素
+
+        # 为了避免显存不足，将图像做了类似batch的方式，通过rnet，得到输出  out[0]代表在当前图像上回归的归一化检测框偏移：[k3,4]   out[1]代表是人脸的概率（0为背景，1为人脸）：[k3,2]
+        out = fixed_batch_process(im_data, rnet)    # This is equivalent to out = rnet(im_data) to avoid GPU out of memory.
+
+        out0 = out[0].permute(1, 0)   # [4,k3]
+        out1 = out[1].permute(1, 0)   # [2,k3]
+        score = out1[1, :]   # 人脸的概率
+        ipass = score > threshold[1]   # 人脸得分大于阈值的mask
+        boxes = torch.cat((boxes[ipass, :4], score[ipass].unsqueeze(1)), dim=1)   # 通过rnet筛选后的人脸box  [k4,5]
+        image_inds = image_inds[ipass]  # 通过rnet筛选后的当前batch中的图像索引
+        mv = out0[:, ipass].permute(1, 0)   # 回归的归一化偏移  [k4,4]
+
+        pick = batched_nms(boxes[:, :4], boxes[:, 4], image_inds, 0.7)  # 再一次nms  [k5]   # NMS within each image
+        boxes, image_inds, mv = boxes[pick], image_inds[pick], mv[pick]   # [k5,5]  [k5]  [k5,4]
+        boxes = bbreg(boxes, mv)   # 结合回归的归一化偏移mv，对boxes进行修正  [k5,5] 
+        boxes = rerec(boxes)       # 对boxes进行偏移，得到正方形的box  [k5,5] 
+
+    points = torch.zeros(0, 5, 2, device=device)   # 人脸关键点坐标
+    if len(boxes) > 0:   # Third stage
+        y, ey, x, ex = pad(boxes, w, h)    # 得到限制在图像内的坐标，均为[k5]
+        im_data = []
+        for k in range(len(y)):
+            if ey[k] > (y[k] - 1) and ex[k] > (x[k] - 1):
+                img_k = imgs[image_inds[k], :, (y[k] - 1):ey[k], (x[k] - 1):ex[k]].unsqueeze(0)     # 得到rnet检测后的人脸图像
+                im_data.append(imresample(img_k, (48, 48)))    # 将图像缩放到48*48
+        im_data = torch.cat(im_data, dim=0)    # [k5,3,48,48]
+        im_data = (im_data - 127.5) * 0.0078125   # 缩放图像像素
+        
+        
+        # 为了避免显存不足，将图像做了类似batch的方式，通过onet，得到输出   # This is equivalent to out = onet(im_data) to avoid GPU out of memory.
+        # out[0]代表回归的归一化检测框偏移：[k5,4]  out[1]代表在当前图像上回归的归一化人脸关键点坐标：[k5,10]   out[2]代表是人脸的概率（0为背景，1为人脸）：[k5,2]
+        out = fixed_batch_process(im_data, onet)
+
+        out0 = out[0].permute(1, 0)   #  [4,k5]
+        out1 = out[1].permute(1, 0)   #  [10,k5]
+        out2 = out[2].permute(1, 0)   #  [2,k5]
+        score = out2[1, :]   # 人脸的概率
+        points = out1   # 人脸关键点坐标  [10,k5]
+        ipass = score > threshold[2]   # 人脸得分大于阈值的mask
+        points = points[:, ipass]   # 人脸关键点坐标  [10,k6]
+        boxes = torch.cat((boxes[ipass, :4], score[ipass].unsqueeze(1)), dim=1)    # 通过onet筛选后的人脸box  [k6,5]
+        image_inds = image_inds[ipass]    # 通过onet筛选后的当前batch中的图像索引
+        mv = out0[:, ipass].permute(1, 0)    # 回归的偏移  [k6,4]
+
+        w_i = boxes[:, 2] - boxes[:, 0] + 1  # 人脸框宽高
+        h_i = boxes[:, 3] - boxes[:, 1] + 1
+        points_x = w_i.repeat(5, 1) * points[:5, :] + boxes[:, 0].repeat(5, 1) - 1   # points为归一化坐标，*w_i得到当前图像上的绝对坐标。+boxes得到在原始图像上的绝对坐标   [5,k6]
+        points_y = h_i.repeat(5, 1) * points[5:10, :] + boxes[:, 1].repeat(5, 1) - 1
+        points = torch.stack((points_x, points_y)).permute(2, 1, 0)  #  [k6,5,2] 
+        boxes = bbreg(boxes, mv)  # 结合回归的归一化偏移mv，对boxes进行修正  [k6,5] 
+
+        # pick = batched_nms(boxes[:, :4], boxes[:, 4], image_inds, 0.7)   # NMS within each image using "Min" strategy
+        pick = batched_nms_numpy(boxes[:, :4], boxes[:, 4], image_inds, 0.7, 'Min')   # [k7]
+        boxes, image_inds, points = boxes[pick], image_inds[pick], points[pick]  # 得到nms抑制后的box、当前batch中的图像索引、人脸关键点坐标
+
+    boxes = boxes.cpu().numpy()
+    points = points.cpu().numpy()
+
+    image_inds = image_inds.cpu()
+
+    batch_boxes = []
+    batch_points = []
+    for b_i in range(batch_size):
+        b_i_inds = np.where(image_inds == b_i)
+        batch_boxes.append(boxes[b_i_inds].copy())
+        batch_points.append(points[b_i_inds].copy())
+
+    batch_boxes, batch_points = np.array(batch_boxes), np.array(batch_points)   # 最终检测的box[B,K7,5]和人脸关键点[B,K7,5,2]  
+
+    return batch_boxes, batch_points
+```
+</details>
+
+
+## P3.8 imresample函数
+
+<details>
+
+```python
+def imresample(img, sz):   # 将图像缩放到指定大小
+    im_data = interpolate(img, size=sz, mode="area")
+    return im_data
+```
+</details>
+
+
+## P3.9 generateBoundingBox函数
+
+<details>
+
+```python
+def generateBoundingBox(reg, probs, scale, thresh):
+    stride = 2     # pnet只有一个stride=2的maxpool，输出分辨率降低一半，因而此处stride=2
+    cellsize = 12  # pnet默认输入大小就是12*12，因而此处是12
+
+    reg = reg.permute(1, 0, 2, 3)   # BCHW转CBHW   C=4   reg为归一化的位置偏移
+
+    mask = probs >= thresh    # 大于阈值的人脸mask   BHW
+    mask_inds = mask.nonzero()   # 由于mask是BHW，因而mask_inds[k,3]，k为mask中非零的个数（即检测到的人脸数量），3指BHW三个维度的索引，也指代特征图上人脸的整数位置（需要结合reg得到检测的人脸位置）
+    image_inds = mask_inds[:, 0]   # B维度的索引
+    score = probs[mask]   # 大于阈值的人脸得分，[k]
+    reg = reg[:, mask].permute(1, 0)   # CBHW取BHW的索引，得到[C,k]，permute后为[k,C]，C=4
+    bb = mask_inds[:, 1:].type(reg.dtype).flip(1)   # mask_inds[:, 1:]为HW的索引，并在W维度进行flip，得到WH的索引
+    q1 = ((stride * bb + 1) / scale).floor()    # 得到当前框的在原始图像上起点坐标
+    q2 = ((stride * bb + cellsize - 1 + 1) / scale).floor()   # 得到当前框的在原始图像上终点坐标（因pnet默认输入为12*12，故此处使用+cellsize-1得到终点坐标）
+    boundingbox = torch.cat([q1, q2, score.unsqueeze(1), reg], dim=1)   # [k,9]  9=2（起点坐标）+2（终点坐标）+1（分值）+4（回归的归一化坐标偏移）
+    return boundingbox, image_inds   # [k,9]的bbox, [k]的图像在当前batch中的索引
+```
+</details>
+
+
+## P3.10 rerec函数
+
+<details>
+
+```python
+def rerec(bboxA):   # 由于人脸框是正方形，此处将非正方形偏移起点，得到正方形的框
+    h = bboxA[:, 3] - bboxA[:, 1]   # 框宽高  [k]
+    w = bboxA[:, 2] - bboxA[:, 0]
+    
+    l = torch.max(w, h)   # 宽高较大值   [k]
+    bboxA[:, 0] = bboxA[:, 0] + w * 0.5 - l * 0.5   # 左上角坐标按照宽高的较大值进行偏移
+    bboxA[:, 1] = bboxA[:, 1] + h * 0.5 - l * 0.5
+    bboxA[:, 2:4] = bboxA[:, :2] + l.repeat(2, 1).permute(1, 0)   # 对框终点进行偏移   [k,2]
+
+    return bboxA  # 正方形的框
+```
+</details>
+
+
+## P3.11 pad函数
+
+<details>
+
+```python
+def pad(boxes, w, h):   # 限制框在图像内
+    boxes = boxes.trunc().int().cpu().numpy()   # trunc进行截断（类似取整）
+    x = boxes[:, 0]   # 起点
+    y = boxes[:, 1]
+    ex = boxes[:, 2]  # 终点
+    ey = boxes[:, 3]
+
+    x[x < 1] = 1   # 限制起点范围
+    y[y < 1] = 1
+    ex[ex > w] = w   # 限制终点范围
+    ey[ey > h] = h
+
+    return y, ey, x, ex   # 得到限制范围后的坐标
+```
+</details>
+
+
+## P3.12 bbreg函数
+
+<details>
+
+```python
+def bbreg(boundingbox, reg):  # 结合回归的reg，对boundingbox进行修正
+    if reg.shape[1] == 1:
+        reg = torch.reshape(reg, (reg.shape[2], reg.shape[3]))
+
+    w = boundingbox[:, 2] - boundingbox[:, 0] + 1   # 人脸宽高
+    h = boundingbox[:, 3] - boundingbox[:, 1] + 1   
+    b1 = boundingbox[:, 0] + reg[:, 0] * w   # 修正后的人脸坐标
+    b2 = boundingbox[:, 1] + reg[:, 1] * h
+    b3 = boundingbox[:, 2] + reg[:, 2] * w
+    b4 = boundingbox[:, 3] + reg[:, 3] * h
+    boundingbox[:, :4] = torch.stack([b1, b2, b3, b4]).permute(1, 0)
+
+    return boundingbox   # 修正后的bbox
+```
+</details>
+
+
+## P3.13 fixed_batch_process函数
+
+<details>
+
+```python
+def fixed_batch_process(im_data, model):   # 为了避免gpu显存不足，将输入图像做了batch的方式，通过model，得到输出
+    batch_size = 512
+    out = []
+    for i in range(0, len(im_data), batch_size):
+        batch = im_data[i:(i+batch_size)]
+        out.append(model(batch))
+
+    return tuple(torch.cat(v, dim=0) for v in zip(*out))
+```
+</details>
