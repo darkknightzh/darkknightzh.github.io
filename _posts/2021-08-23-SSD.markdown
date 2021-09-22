@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "SSD Single Shot MultiBox Detector(代码未添加)"
+title:  "SSD Single Shot MultiBox Detector"
 date:   2021-08-23 16:00:00 +0800
 tags: [deep learning, algorithm, detection]
 pin: true
@@ -141,4 +141,1580 @@ $$i,j\in \left[ 0,\left| { {f}_{k}} \right| \right)$$
 
 ## P3. 代码
 
-之后补全
+### P3.1 训练
+
+训练代码位于train.py。
+
+#### P3.1.1 train
+<details>
+
+```python
+def train():
+    # 训练阶段只会滤除和gt box的IoU小于阈值的，将这些设置为背景。而后难例挖掘，不会进行nms
+    if args.dataset == 'COCO':
+        pass
+        # if args.dataset_root == VOC_ROOT:     # 避免设置错误，给出提示
+        #     if not os.path.exists(COCO_ROOT):
+        #         parser.error('Must specify dataset_root if specifying dataset')
+        #     print("WARNING: Using default COCO dataset_root because " +
+        #           "--dataset_root was not specified.")
+        #     args.dataset_root = COCO_ROOT
+        # cfg = coco
+        # dataset = COCODetection(root=args.dataset_root,
+        #                         transform=SSDAugmentation(cfg['min_dim'], MEANS))      # 得到COCO的信息，供DataLoader使用
+    elif args.dataset == 'VOC':             # 避免设置错误，给出提示
+        # if args.dataset_root == COCO_ROOT:
+        #     parser.error('Must specify dataset if specifying dataset_root')
+        cfg = voc
+        dataset = VOCDetection(root=args.dataset_root, transform=SSDAugmentation(cfg['min_dim'], MEANS))   # 得到voc的信息，供DataLoader使用
+
+    # if args.visdom:
+    #     import visdom
+    #     viz = visdom.Visdom()   # loss的可视化
+
+    ssd_net = build_ssd('train', cfg['min_dim'], cfg['num_classes'])   # 得到训练时的ssd多分辨率检测网络
+    net = ssd_net
+
+    if args.cuda:
+        net = torch.nn.DataParallel(ssd_net)
+        cudnn.benchmark = True
+
+    if args.resume:
+        print('Resuming training, loading {}...'.format(args.resume))
+        ssd_net.load_weights(args.resume)       # load之前训练的权重
+    else:
+        vgg_weights = torch.load(args.save_folder + args.basenet)    # load预训练的vgg模型
+        print('Loading base network...')
+        ssd_net.vgg.load_state_dict(vgg_weights)
+
+    if args.cuda:
+        net = net.cuda()
+
+    if not args.resume:
+        print('Initializing weights...')
+        # initialize newly added layers' weights with xavier method
+        ssd_net.extras.apply(weights_init)         # extras部分conv的参数初始化  extra layers that feed to multibox loc and conf layers
+        ssd_net.loc.apply(weights_init)            # loc部分conv的参数初始化  localization layers
+        ssd_net.conf.apply(weights_init)           # conf部分conv的参数初始化  confidence layers
+
+    optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
+    criterion = MultiBoxLoss(cfg['num_classes'], 0.5, True, 0, True, 3, 0.5, False, args.cuda)    # 计算loss  # 训练阶段只会滤除和gt box的IoU小于阈值的，讲这些设置为背景。而后难例挖掘，不会进行nms
+
+    net.train()
+    # loss counters
+    loc_loss = 0        # 得到的检测框的定位误差
+    conf_loss = 0       # 得到的检测框的分类误差
+    epoch = 0
+    print('Loading the dataset...')
+
+    epoch_size = len(dataset) // args.batch_size    # 每个epoch的训练次数
+    print('Training SSD on:', dataset.name)
+    print('Using the specified args:')
+    print(args)
+
+    step_index = 0
+
+    # if args.visdom:    # 可视化相关的初始化
+    #     vis_title = 'SSD.PyTorch on ' + dataset.name
+    #     vis_legend = ['Loc Loss', 'Conf Loss', 'Total Loss']
+    #     iter_plot = create_vis_plot('Iteration', 'Loss', vis_title, vis_legend)
+    #     epoch_plot = create_vis_plot('Epoch', 'Loss', vis_title, vis_legend)
+
+    data_loader = data.DataLoader(dataset, args.batch_size, num_workers=args.num_workers, shuffle=True, collate_fn=detection_collate, pin_memory=True)
+    # create batch iterator
+    batch_iterator = iter(data_loader)
+    for iteration in range(args.start_iter, cfg['max_iter']):
+        # if args.visdom and iteration != 0 and (iteration % epoch_size == 0):
+        #     update_vis_plot(epoch, loc_loss, conf_loss, epoch_plot, None, 'append', epoch_size)   # 每训练一个epoch，更新一下显示结果
+        #     # reset epoch loss counters  重置相关参数
+        #     loc_loss = 0
+        #     conf_loss = 0
+        #     epoch += 1
+
+        if iteration in cfg['lr_steps']:
+            step_index += 1
+            adjust_learning_rate(optimizer, args.gamma, step_index)   # 调整lr
+
+        # load train data
+        images, targets = next(batch_iterator)   # 得到下一组数据（图像，bbox+label），图像为B*C*300*300，bbox+label为B个tensor，每个tensor为ki*5矩阵（ki为当前图像SSDAugmentation之后目标数量，实际不会太多）
+
+        if args.cuda:
+            images = Variable(images.cuda())
+            targets = [Variable(ann.cuda(), volatile=True) for ann in targets]   # 类别、bbox+label
+        else:
+            images = Variable(images)
+            targets = [Variable(ann, volatile=True) for ann in targets]   # 类别、bbox+label
+        # forward
+        t0 = time.time()
+        out = net(images)   # 得到图像通过网络的输出    # 预测的bs*N*4的密集坐标（预测的偏移） + 预测的bs*N*num_classes的密集分类结果 + 不同分辨率的密集先验坐标（输入图像宽高一样，因而共用先验坐标即可）：N*4。N个[cx, cy, w, h]
+        # backprop
+        optimizer.zero_grad()
+        loss_l, loss_c = criterion(out, targets)   # 通过网络，计算定位误差和分类误差
+        loss = loss_l + loss_c   # 总损失
+        loss.backward()
+        optimizer.step()
+        t1 = time.time()
+        # loc_loss += loss_l.data[0]    # 累计定位误差
+        # conf_loss += loss_c.data[0]   # 累计分类误差
+        loc_loss += loss_l.item()    # 累计定位误差
+        conf_loss += loss_c.item()   # 累计分类误差
+
+        if iteration % 10 == 0:
+            print('timer: %.4f sec.' % (t1 - t0))
+            print('iter ' + repr(iteration) + ' || Loss: %.4f ||' % (loss.item()), end=' ')
+
+        # if args.visdom:
+        #     update_vis_plot(iteration, loss_l.data[0], loss_c.data[0],
+        #                     iter_plot, epoch_plot, 'append')
+
+        if iteration != 0 and iteration % 5000 == 0:
+            print('Saving state, iter:', iteration)
+            torch.save(ssd_net.state_dict(), 'weights/ssd300_COCO_' + repr(iteration) + '.pth')       # 保存训练的参数
+    torch.save(ssd_net.state_dict(), args.save_folder + '' + args.dataset + '.pth')
+```
+</details>
+
+#### P3.1.2 adjust_learning_rate
+
+调整lr代码如下：
+
+<details>
+
+```python
+def adjust_learning_rate(optimizer, gamma, step):   # 调整lr
+    """Sets the learning rate to the initial LR decayed by 10 at every
+        specified step
+    # Adapted from PyTorch Imagenet example:
+    # https://github.com/pytorch/examples/blob/master/imagenet/main.py
+    """
+    lr = args.lr * (gamma ** (step))
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = lr
+```
+</details>
+
+#### P3.1.3 config
+
+配置信息位于data/config.py
+
+<details>
+
+```python
+# for making bounding boxes pretty
+COLORS = ((255, 0, 0, 128), (0, 255, 0, 128), (0, 0, 255, 128),
+          (0, 255, 255, 128), (255, 0, 255, 128), (255, 255, 0, 128))
+
+MEANS = (104, 117, 123)
+
+# SSD300 CONFIGS
+voc = {
+    'num_classes': 21,                      # 类别数
+    'lr_steps': (80000, 100000, 120000),    # 每次调整lr的step
+    'max_iter': 120000,                     # 最大训练次数
+    'feature_maps': [38, 19, 10, 5, 3, 1],  # 不同分辨率特征宽度（宽高相等）
+    'min_dim': 300,                         # 输入网络的图像宽高
+    'steps': [8, 16, 32, 64, 100, 300],          # 多分辨率的特征图相比于输入图像缩小的倍数
+    'min_sizes': [30, 60, 111, 162, 213, 264],   # 不同分辨率检测的目标的最小值
+    'max_sizes': [60, 111, 162, 213, 264, 315],  # 用于计算宽高比为1时，额外的特定scale的宽高的临时变量
+    'aspect_ratios': [[2], [2, 3], [2, 3], [2, 3], [2], [2]],   # 额外的长宽比，此处每个对应两个，加上长宽比为1的及长宽比为1时额外的，共[4, 6, 6, 6, 4, 4]，和ssd.py中mbox['300']一致
+    'variance': [0.1, 0.2],
+    'clip': True,
+    'name': 'VOC',
+}
+```
+</details>
+
+### P3.2 测试代码
+
+测试代码位于test.py，其main中调用test_voc，其进一步调用test_net。
+
+#### P3.2.1 test_voc
+
+<details>
+
+```python
+def test_voc():
+    num_classes = len(VOC_CLASSES) + 1 # +1 background     voc数据库上类别数量（voc类别+背景）
+    net = build_ssd('test', 300, num_classes) # initialize SSD    # 得到测试时的ssd检测网络
+    net.load_state_dict(torch.load(args.trained_model))    # 载入训练的模型  # load net
+    net.eval()
+    print('Finished loading model!')
+    testset = VOCDetection(args.voc_root, [('2007', 'test')], None, VOCAnnotationTransform())     # 得到voc的信息，供DataLoader使用，此处不对数据做argument  # load data
+    if args.cuda:
+        net = net.cuda()
+        cudnn.benchmark = True
+    test_net(args.save_folder, net, args.cuda, testset, BaseTransform(net.size, (104, 117, 123)), thresh=args.visual_threshold)    # BaseTransform：图像转float，并减均值  # evaluation
+```
+</details>
+
+
+#### P3.2.2 test_net
+
+<details>
+
+```python
+def test_net(save_folder, net, cuda, testset, transform, thresh):
+    # dump predictions and assoc. ground truth to text file for now
+    # 测试阶段对检测结果进行nms，去除太近的框。
+    filename = save_folder+'test1.txt'
+    num_images = len(testset)    # 测试集图像数量
+    for i in range(num_images):
+        print('Testing image {:d}/{:d}....'.format(i+1, num_images))
+        img = testset.pull_image(i)     # 得到当前图像    HWC
+        img_id, annotation = testset.pull_anno(i)   # 得到当前图像相关信息
+        x = torch.from_numpy(transform(img)[0]).permute(2, 0, 1)   # 输入网络的数据，将HWC转CHW
+        x = Variable(x.unsqueeze(0))   # CHW转BCHW，其中B=1
+
+        with open(filename, mode='a') as f:
+            f.write('\nGROUND TRUTH FOR: '+img_id+'\n')
+            for box in annotation:
+                f.write('label: '+' || '.join(str(b) for b in box)+'\n')    # gt信息
+        if cuda:
+            x = x.cuda()
+
+        y = net(x)      # forward pass  得到检测的目标的信息
+        detections = y.data    # [bs, num_classes, top_k, 5]   返回的检测结果
+        # scale each detection back up to the image   将检测的目标缩放到原始图像上
+        scale = torch.Tensor([img.shape[1], img.shape[0], img.shape[1], img.shape[0]])   # 将归一化的预测rect转换到绝对坐标的参数（图像依旧为HWC）
+        pred_num = 0
+        for i in range(detections.size(1)):    # 依次遍历每个类别
+            j = 0   # 当前类别分类概率最大的目标的索引
+            while detections[0, i, j, 0] >= 0.6:    # 当前目标分类概率大于0.6时
+                if pred_num == 0:
+                    with open(filename, mode='a') as f:
+                        f.write('PREDICTIONS: '+'\n')
+                score = detections[0, i, j, 0]    # 当前类别分类概率最大的目标的分类概率
+                label_name = labelmap[i-1]        # 得到实际的类别。由于实际类别不包括背景，因而需要i-1
+                pt = (detections[0, i, j, 1:]*scale).cpu().numpy()    # 得到实际rect（分别乘以宽、高、宽、高）
+                coords = (pt[0], pt[1], pt[2], pt[3])   # 实际坐标
+                pred_num += 1
+                with open(filename, mode='a') as f:
+                    f.write(str(pred_num)+' label: '+label_name+' score: ' + str(score) + ' '+' || '.join(str(c) for c in coords) + '\n')   # 保存结果
+                j += 1    # 更新当前目标索引
+```
+</details>
+
+#### P3.2.3 BaseTransform
+
+用于将图像转float，并减均值。位于data/__init__.py。
+
+<details>
+
+```python
+def base_transform(image, size, mean):   # 图像转float，并减均值   HWC
+    x = cv2.resize(image, (size, size)).astype(np.float32)
+    x -= mean
+    x = x.astype(np.float32)
+    return x
+
+class BaseTransform:
+    def __init__(self, size, mean):
+        self.size = size
+        self.mean = np.array(mean, dtype=np.float32)
+
+    def __call__(self, image, boxes=None, labels=None):
+        return base_transform(image, self.size, self.mean), boxes, labels    # 图像转float，并减均值   HWC
+```
+</details>
+
+
+### P3.3 SSD网络build_ssd
+
+train和test均会调用build_ssd，其位于ssd.py。通过multibox对不同分辨率的特征预测目标框及目标类别，multibox使用vgg得到骨干网络、使用add_extras增加新的conv网络，最终返回SSD网络。
+
+<details>
+
+```python
+def build_ssd(phase, size=300, num_classes=21):   # 创建ssd检测网络
+    if phase != "test" and phase != "train":
+        print("ERROR: Phase: " + phase + " not recognized")
+        return
+    if size != 300:
+        print("ERROR: You specified size " + repr(size) + ". However, currently only SSD300 (size=300) is supported!")
+        return
+    # multibox为多分辨率的ssd网络
+    base_, extras_, head_ = multibox(vgg(base[str(size)], 3),                # 骨干网络
+                                     add_extras(extras[str(size)], 1024),    # 新增加的conv网络
+                                     mbox[str(size)], num_classes)
+    return SSD(phase, size, base_, extras_, head_, num_classes)   # 返回ssd网络
+```
+</details>
+
+#### P3.3.1 multibox
+
+位于ssd.py。
+
+<details>
+
+```python
+def multibox(vgg, extra_layers, cfg, num_classes):   # 对不同分辨率的特征预测目标框及目标类别（使用conv2d替代fc）
+    # cfg = [4, 6, 6, 6, 4, 4]   不同分辨率特征图上每个位置的default box数量
+    # num_classes = 21
+    loc_layers = []
+    conf_layers = []
+    vgg_source = [21, -2]   # vgg骨干网络需要得到多分辨率特征的层数
+    for k, v in enumerate(vgg_source):
+        loc_layers += [nn.Conv2d(vgg[v].out_channels, cfg[k] * 4, kernel_size=3, padding=1)]    # 多分辨率，将cov当做fc，拟合目标框坐标
+        conf_layers += [nn.Conv2d(vgg[v].out_channels, cfg[k] * num_classes, kernel_size=3, padding=1)] # 多分辨率，将cov当做fc，分类目标类别
+    for k, v in enumerate(extra_layers[1::2], 2):
+        loc_layers += [nn.Conv2d(v.out_channels, cfg[k] * 4, kernel_size=3, padding=1)]     # 多分辨率，将cov当做fc，拟合目标框坐标
+        conf_layers += [nn.Conv2d(v.out_channels, cfg[k] * num_classes, kernel_size=3, padding=1)]   # 多分辨率，将cov当做fc，分类目标类别
+    return vgg, extra_layers, (loc_layers, conf_layers)   # 返回相应结果
+
+base = {    # 只支持ssd300，所以512部分为空
+    '300': [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M',
+            512, 512, 512],
+    '512': [],
+}
+extras = {   # 只支持ssd300，所以512部分为空
+    '300': [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256],
+    '512': [],
+}
+mbox = {   # 只支持ssd300，所以512部分为空
+    '300': [4, 6, 6, 6, 4, 4],  # number of boxes per feature map location   不同分辨率特征图上每个位置的default box数量，和PriorBox.py中forward的结果一致
+    '512': [],
+}
+```
+</details>
+
+#### P3.3.2 vgg
+
+位于ssd.py。
+
+<details>
+
+```python
+# This function is derived from torchvision VGG make_layers()
+# https://github.com/pytorch/vision/blob/master/torchvision/models/vgg.py
+def vgg(cfg, i, batch_norm=False):  
+    # cfg = [64, 64, 'M', 128, 128, 'M', 256, 256, 256, 'C', 512, 512, 512, 'M', 512, 512, 512]   # conv_1到conv_5
+    # i = 3  为输入通道数
+    layers = []
+    in_channels = i
+    for v in cfg:
+        if v == 'M':
+            layers += [nn.MaxPool2d(kernel_size=2, stride=2)]    # ceil_mode=False时，maxpool计算输出图像尺寸时向内取整
+        elif v == 'C':
+            layers += [nn.MaxPool2d(kernel_size=2, stride=2, ceil_mode=True)]   # ceil_mode=True时，maxpool计算输出图像尺寸时向外取整
+        else:
+            conv2d = nn.Conv2d(in_channels, v, kernel_size=3, padding=1)   # conv层
+            if batch_norm:
+                layers += [conv2d, nn.BatchNorm2d(v), nn.ReLU(inplace=True)]   # conv+bn+ReLU
+            else:
+                layers += [conv2d, nn.ReLU(inplace=True)]       # conv+ReLU
+            in_channels = v
+    pool5 = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
+    conv6 = nn.Conv2d(512, 1024, kernel_size=3, padding=6, dilation=6)   # 空洞卷积，增大感受野
+    conv7 = nn.Conv2d(1024, 1024, kernel_size=1)
+    layers += [pool5, conv6, nn.ReLU(inplace=True), conv7, nn.ReLU(inplace=True)]
+    return layers
+```
+</details>
+
+#### P3.3.3 add_extras
+
+位于ssd.py。
+
+<details>
+
+```python
+def add_extras(cfg, i, batch_norm=False):  # 用于对vgg19的特征进行缩放，方便得到多分辨率特征
+    # Extra layers added to VGG for feature scaling
+    # cfg = [256, 'S', 512, 128, 'S', 256, 128, 256, 128, 256]
+    # i = 1024  vgg的conv7+ReLU的输出通道数
+
+    # Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1))
+    # Conv2d(256, 512, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
+    # Conv2d(512, 128, kernel_size=(1, 1), stride=(1, 1))
+    # Conv2d(128, 256, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
+    # Conv2d(256, 128, kernel_size=(1, 1), stride=(1, 1))
+    # Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1))
+    # Conv2d(256, 128, kernel_size=(1, 1), stride=(1, 1))
+    # Conv2d(128, 256, kernel_size=(3, 3), stride=(1, 1))
+
+    layers = []
+    in_channels = i
+    flag = False
+    for k, v in enumerate(cfg):
+        if in_channels != 'S':
+            if v == 'S':
+                layers += [nn.Conv2d(in_channels, cfg[k + 1], kernel_size=(1, 3)[flag], stride=2, padding=1)]   # 3*3conv
+            else:
+                layers += [nn.Conv2d(in_channels, v, kernel_size=(1, 3)[flag])]    # 1*1conv
+            flag = not flag
+        in_channels = v
+    return layers
+```
+</details>
+
+#### P3.3.4 SSD
+
+位于ssd.py。
+
+<details>
+
+```python
+class SSD(nn.Module):
+    """Single Shot Multibox Architecture
+    The network is composed of a base VGG network followed by the
+    added multibox conv layers.  Each multibox layer branches into
+        1) conv2d for class conf scores
+        2) conv2d for localization predictions
+        3) associated priorbox layer to produce default bounding
+           boxes specific to the layer's feature map size.
+    See: https://arxiv.org/pdf/1512.02325.pdf for more details.
+
+    Args:
+        phase: (string) Can be "test" or "train"
+        size: input image size
+        base: VGG16 layers for input, size of either 300 or 500
+        extras: extra layers that feed to multibox loc and conf layers
+        head: "multibox head" consists of loc and conf conv layers
+    """
+
+    def __init__(self, phase, size, base, extras, head, num_classes):
+        super(SSD, self).__init__()
+        self.phase = phase    # 训练还是测试阶段
+        self.num_classes = num_classes   # 分类的类别
+        self.cfg = (coco, voc)[num_classes == 21]   # 配置信息
+        self.priorbox = PriorBox(self.cfg)   # 不同分辨率的密集先验坐标
+        self.priors = Variable(self.priorbox.forward(), volatile=True)  # 得到不同分辨率的密集先验坐标：N*4  N个[cx, cy, w, h]
+        self.size = size
+
+        # SSD network
+        self.vgg = nn.ModuleList(base)    # vgg骨干网络
+        # Layer learns to scale the l2 normalized features from conv4_3
+        self.L2Norm = L2Norm(512, 20)    #   对输入特征进行l2归一化，并乘以可学习的参数，进行变换
+        self.extras = nn.ModuleList(extras)   # 额外信息
+
+        self.loc = nn.ModuleList(head[0])    # 定位网络
+        self.conf = nn.ModuleList(head[1])   # 分类网络
+
+        if phase == 'test':
+            self.softmax = nn.Softmax(dim=-1)    # 测试阶段，使用softmax
+            self.detect = Detect(num_classes, 0, 200, 0.01, 0.45)   # 测试阶段的Detect
+
+    def forward(self, x):
+        """Applies network layers and ops on input image(s) x.
+        Args:
+            x: input image or batch of images. Shape: [batch,3,300,300].
+        Return:
+            Depending on phase:
+            test:
+                Variable(tensor) of output class label predictions, confidence score, and corresponding location predictions for
+                each object detected. Shape: [batch,topk,7]
+            train:
+                list of concat outputs from:
+                    1: confidence layers, Shape: [batch*num_priors,num_classes]
+                    2: localization layers, Shape: [batch,num_priors*4]
+                    3: priorbox layers, Shape: [2,num_priors*4]
+        """
+        sources = list()  # 缓存6个分辨率的特征
+        loc = list()
+        conf = list()
+
+        # apply vgg up to conv4_3 relu
+        for k in range(23):
+            x = self.vgg[k](x)   # 使用vgg到conv4_3的relu层
+
+        s = self.L2Norm(x)   # 对vgg之后的特征进行l2归一化，并乘以可学习的参数，进行变换，得到第一个多分辨率特征，用于拟合目标框及目标类别
+        sources.append(s)
+
+        # apply vgg up to fc7
+        for k in range(23, len(self.vgg)):   # 使用vgg从conv4_3的relu之后到fc7层
+            x = self.vgg[k](x)
+        sources.append(x)   # 得到fc7之后的特征（实际使用conv2d替代fc），得到第二个多分辨率特征
+
+        # apply extra layers and cache source layer outputs
+        for k, v in enumerate(self.extras):
+            x = F.relu(v(x), inplace=True)
+            if k % 2 == 1:
+                sources.append(x)   # 特征通过额外层，缓存多分辨率特征，得到3、4、5、6个多分辨率特征
+
+        # apply multibox head to source layers
+        for (x, l, c) in zip(sources, self.loc, self.conf):   # 不同分辨率特征，不同分辨率定位网络层，不同分辨率分类网络层
+            loc.append(l(x).permute(0, 2, 3, 1).contiguous())   # 得到不同分辨率特征的定位特征，供之后cat及reshape成B*N*4的拟合定位特征
+            conf.append(c(x).permute(0, 2, 3, 1).contiguous())  # 得到不同分辨率特征的分类特征，供之后cat及reshape成B*N*self.num_classes的拟合分类特征
+
+        loc = torch.cat([o.view(o.size(0), -1) for o in loc], 1)   #不同分辨率的定位特征拼接（保留bs，其他维度合并，最终为bs*特征reshape之和）
+        conf = torch.cat([o.view(o.size(0), -1) for o in conf], 1) #不同分辨率的分类特征拼接（保留bs，其他维度合并，最终为bs*特征reshape之和）
+        if self.phase == "test":     # 测试阶段，则直接对检测结果分类，得到输出
+            output = self.detect(                                              # 输入相关结果，进行检测。
+                loc.view(loc.size(0), -1, 4),                                  # loc preds     预测的多个目标的坐标
+                self.softmax(conf.view(conf.size(0), -1, self.num_classes)),   # conf preds    预测的每个目标对应的类别
+                self.priors.type(type(x.data))                                 # default boxes 不同分辨率的密集先验坐标：N个[cx, cy, w, h]
+            )
+        else:      # 训练阶段，则返回定位信息及分类信息，得到输出，供计算损失使用
+            output = (
+                loc.view(loc.size(0), -1, 4),   # reshape成bs*N*4维度的向量，代表密集预测的多个坐标（此处为预测的偏移）
+                conf.view(conf.size(0), -1, self.num_classes),  # reshape成bs*N*num_classes维度的向量，代表密集预测的分类结果
+                self.priors                     # 不同分辨率的密集先验坐标：N*4   N个[cx, cy, w, h]   由于图像输入大小固定，因而先验坐标共用1个即可
+            )
+        return output   # 返回输出
+
+    def load_weights(self, base_file):      # load之前训练的权重
+        other, ext = os.path.splitext(base_file)
+        if ext == '.pkl' or '.pth':
+            print('Loading weights into state dict...')
+            self.load_state_dict(torch.load(base_file,
+                                 map_location=lambda storage, loc: storage))
+            print('Finished!')
+        else:
+            print('Sorry only .pth and .pkl files supported.')
+```
+</details>
+
+
+#### P3.3.5密集先验坐标PriorBox
+
+SSD中PriorBox用于得到不同分辨率的密集先验坐标，其位于layers/functions/prior_box.py。
+
+<details>
+
+```python
+class PriorBox(object):   # 得到不同分辨率的密集先验坐标：N个[cx, cy, w, h]
+    """Compute priorbox coordinates in center-offset form for each source feature map."""
+    def __init__(self, cfg):
+        super(PriorBox, self).__init__()
+        self.image_size = cfg['min_dim']    # 图像宽高，目前都是300
+        # number of priors for feature map location (either 4 or 6)
+        self.num_priors = len(cfg['aspect_ratios'])   # 长宽比的长度
+        self.variance = cfg['variance'] or [0.1]
+        self.feature_maps = cfg['feature_maps']  # 不同分辨率特征宽度（宽高相等）  [38, 19, 10, 5, 3, 1]
+        self.min_sizes = cfg['min_sizes']        # 不同分辨率检测的目标的最小值  [30, 60, 111, 162, 213, 264]
+        self.max_sizes = cfg['max_sizes']        # 用于计算宽高比为1时，额外的特定scale的宽高的临时变量  [60, 111, 162, 213, 264, 315]
+        self.steps = cfg['steps']                # 多分辨率的特征图相比于输入图像缩小的倍数。[8, 16, 32, 64, 100, 300]
+        self.aspect_ratios = cfg['aspect_ratios']   # 长宽比  [[2], [2, 3], [2, 3], [2, 3], [2], [2]]
+        self.clip = cfg['clip']   # True
+        self.version = cfg['name']   # VOC或者COCO
+        for v in self.variance:
+            if v <= 0:
+                raise ValueError('Variances must be greater than 0')
+
+    def forward(self):
+        mean = []
+        for k, f in enumerate(self.feature_maps):      # 不同分辨率特征宽度（宽高相等） [38, 19, 10, 5, 3, 1]
+            for i, j in product(range(f), repeat=2):   # product(range(f), repeat=2)等价于product(range(f), range(f))
+                f_k = self.image_size / self.steps[k]  # 当前分辨率特征图相比于输入图像缩小倍数。 image_size = 300, steps = [8, 16, 32, 64, 100, 300]
+                # unit center x,y
+                cx = (j + 0.5) / f_k   # 每个rect归一化的中心x坐标
+                cy = (i + 0.5) / f_k   # 每个rect归一化的中心y坐标
+
+                # aspect_ratio: 1
+                # rel size: min_size
+                s_k = self.min_sizes[k]/self.image_size   # 不同分辨率检测目标的归一化最小值
+                mean += [cx, cy, s_k, s_k]
+
+                # aspect_ratio: 1
+                # rel size: sqrt(s_k * s_(k+1))
+                s_k_prime = sqrt(s_k * (self.max_sizes[k]/self.image_size))  # 论文中宽高比为1时，额外的特定scale的宽高
+                mean += [cx, cy, s_k_prime, s_k_prime]   # 不同分辨率宽高比为1时，额外的特定scale的宽高
+
+                # rest of aspect ratios  由于每个ar对应宽的和高的两个mean，因而此处分别增加len(ar)*2，即[2,4,4,4,2,2]个prior box，
+                # 加上上面的2个prior box，总共[4, 6, 6, 6, 4, 4]个prior box。和ssd.py中mbox['300']一致
+                for ar in self.aspect_ratios[k]:    #  [[2], [2, 3], [2, 3], [2, 3], [2], [2]]
+                    mean += [cx, cy, s_k*sqrt(ar), s_k/sqrt(ar)]   # 不同分辨率检测的横向目标
+                    mean += [cx, cy, s_k/sqrt(ar), s_k*sqrt(ar)]   # 不同分辨率检测的纵向目标
+        # back to torch land
+        output = torch.Tensor(mean).view(-1, 4)
+        if self.clip:
+            output.clamp_(max=1, min=0)
+        return output   # 不同分辨率的密集先验坐标：N*4  N个[cx, cy, w, h]
+```
+</details>
+
+
+#### 3.3.6 对输入特征归一化L2Norm
+
+SSD中L2Norm用于对输入特征进行L2归一化，并乘以可学习的参数，进行变换。其位于layers/modules/l2norm.py。
+
+<details>
+
+```python
+class L2Norm(nn.Module):   # 对输入特征进行l2归一化，并乘以可学习的参数，进行变换
+    def __init__(self,n_channels, scale):
+        super(L2Norm,self).__init__()
+        self.n_channels = n_channels
+        self.gamma = scale or None
+        self.eps = 1e-10
+        self.weight = nn.Parameter(torch.Tensor(self.n_channels))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        init.constant_(self.weight,self.gamma)
+
+    def forward(self, x):
+        norm = x.pow(2).sum(dim=1, keepdim=True).sqrt()+self.eps
+        #x /= norm
+        x = torch.div(x,norm)
+        out = self.weight.unsqueeze(0).unsqueeze(2).unsqueeze(3).expand_as(x) * x
+        return out
+```
+</details>
+
+#### 3.3.7 测试阶段的检测Detect
+
+SSD中Detect用于测试阶段的检测，其位于layers/functions/detection.py。
+
+<details>
+
+```python
+class Detect(Function):
+    """At test time, Detect is the final layer of SSD.  Decode location preds, apply non-maximum suppression to location predictions based on conf
+    scores and threshold to a top_k number of output predictions for both confidence score and locations.
+    """
+    def __init__(self, num_classes, bkg_label, top_k, conf_thresh, nms_thresh):
+        self.num_classes = num_classes    # 类别数
+        self.background_label = bkg_label    # 背景的label  0  
+        self.top_k = top_k      # nms时top k数量   200
+        self.nms_thresh = nms_thresh    # nms阈值  0.01    # Parameters used in nms.
+        if nms_thresh <= 0:
+            raise ValueError('nms_threshold must be non negative.')
+        self.conf_thresh = conf_thresh     # 分类的阈值    0.45
+        self.variance = cfg['variance']
+
+    def forward(self, loc_data, conf_data, prior_data):
+        """
+        Args:
+            loc_data: (tensor) Loc preds from loc layers  Shape: [batch,num_priors*4]     预测的不同分辨率的密集位置信息（此处为预测的偏移offset）
+            conf_data: (tensor) Shape: Conf preds from conf layers  Shape: [batch*num_priors,num_classes]    预测的不同分辨率的密集分类概率
+            prior_data: (tensor) Prior boxes and variances from priorbox layers  Shape: [1,num_priors,4]     不同分辨率的密集先验坐标：N个[cx, cy, w, h]
+        """
+        # 测试阶段对检测结果进行nms，去除太近的框。
+        num = loc_data.size(0)  # batch size
+        num_priors = prior_data.size(0)      # 不同分辨率的密集先验坐标数量
+        output = torch.zeros(num, self.num_classes, self.top_k, 5)     # 返回的检测结果
+        conf_preds = conf_data.view(num, num_priors, self.num_classes).transpose(2, 1)    # [batch*num_priors,num_classes]->[batch, num_priors,num_classes]->[batch, num_classes, num_priors]
+
+        for i in range(num):   # 依次处理每张图片     Decode predictions into bboxes.
+            decoded_boxes = decode(loc_data[i], prior_data, self.variance)    # 解码偏移信息，得到实际预测的bbox。从[cx, cy, w, h]到[xmin, ymin, xmax, ymax]     # [num_priors, 4] 
+            conf_scores = conf_preds[i].clone()   # 得到当前图像的分类概率。[num_classes, num_priors]    For each class, perform nms  
+
+            for cl in range(1, self.num_classes):    # 依次对每个类别进行nms（去掉背景：cl=0）   
+                c_mask = conf_scores[cl].gt(self.conf_thresh)   # 得到当前图像分到当前类别的概率大于阈值的mask   [num_priors] 
+                scores = conf_scores[cl][c_mask]   # 得到当前图像分到当前类别的概率大于阈值的那些概率   [k个] 
+                if scores.size(0) == 0:
+                    continue
+                l_mask = c_mask.unsqueeze(1).expand_as(decoded_boxes)   #  当前图像分到当前类别的概率大于阈值的那些定位信息的mask   [num_priors, 4] 
+                boxes = decoded_boxes[l_mask].view(-1, 4)      #  当前图像分到当前类别的概率大于阈值的那些定位信息   [k个, 4] 
+                ids, count = nms(boxes, scores, self.nms_thresh, self.top_k)      # 进行nms，得到保留的索引（实际为top_k个，不过count之后的均为0），及保留的索引的数量  idx of highest scoring and non-overlapping boxes per class
+                output[i, cl, :count] = torch.cat((scores[ids[:count]].unsqueeze(1), boxes[ids[:count]]), 1)   #  右侧为[count, 5]，将这些结果放到output[i, cl]前count中（output[i, cl]的count之后的均为0）
+        flt = output.contiguous().view(num, -1, 5)   # [num, self.num_classes * self.top_k, 5]
+        _, idx = flt[:, :, 0].sort(1, descending=True)   # 按照框的分类概率由大到小排序，得到索引
+        _, rank = idx.sort(1)   # 得到排序后索引的索引，和multibox_loss.py中loss_idx、idx_rank使用方法一样，通过其rank < self.top_k得到原始数据的索引
+        flt[(rank < self.top_k).unsqueeze(-1).expand_as(flt)].fill_(0)  # 将前self.top_k个目标置0 ？？？
+        return output
+```
+</details>
+
+
+#### P3.3.8 解码偏移信息decode
+
+位于layers/box_utils.py。
+
+<details>
+
+```python
+# Adapted from https://github.com/Hakuyume/chainer-ssd
+def decode(loc, priors, variances):   # 解码偏移信息，得到实际预测的bbox。从[cx, cy, w, h]到[xmin, ymin, xmax, ymax]
+    """Decode locations from predictions using priors to undo the encoding we did for offset regression at train time.
+    Args:
+        loc (tensor): location predictions for loc layers, Shape: [num_priors,4]
+        priors (tensor): Prior boxes in center-offset form. Shape: [num_priors,4].
+        variances: (list[float]) Variances of priorboxes
+    Return:
+        decoded bounding box predictions
+    """
+    '''
+    g_x=g'_x*d_w*var_0+d_x      y同理，将d_w换成d_h
+    g_w=d_w*exp(g'_w*var_1)      h同理
+    其中，g为gt坐标（此处返回值），g'为实际的offset（此处loc），d为先验坐标（此处priors）
+    '''
+    boxes = torch.cat((priors[:, :2] + loc[:, :2] * variances[0] * priors[:, 2:], priors[:, 2:] * torch.exp(loc[:, 2:] * variances[1])), 1)
+    boxes[:, :2] -= boxes[:, 2:] / 2
+    boxes[:, 2:] += boxes[:, :2]
+    return boxes
+```
+</details>
+
+
+#### 3.3.9 nms
+
+位于layers/box_utils.py。
+
+<details>
+
+```python
+# Original author: Francisco Massa:
+# https://github.com/fmassa/object-detection.torch
+# Ported to PyTorch by Max deGroot (02/01/2017)
+def nms(boxes, scores, overlap=0.5, top_k=200):
+    """Apply non-maximum suppression at test time to avoid detecting too many overlapping bounding boxes for a given object.
+    Args:
+        boxes: (tensor) The location preds for the img, Shape: [num_priors,4].    [k个, 4] 
+        scores: (tensor) The class predscores for the img, Shape:[num_priors].    [k个] 
+        overlap: (float) The overlap thresh for suppressing unnecessary boxes.
+        top_k: (int) The Maximum number of box preds to consider.
+    Return:
+        The indices of the kept boxes with respect to num_priors.
+    """
+
+    keep = scores.new(scores.size(0)).zero_().long()     # 需要保留的索引    [k个] 
+    if boxes.numel() == 0:
+        return keep
+    x1 = boxes[:, 0]
+    y1 = boxes[:, 1]
+    x2 = boxes[:, 2]
+    y2 = boxes[:, 3]
+    area = torch.mul(x2 - x1, y2 - y1)       # 每个框的面积   torch.mul为对应元素相乘
+    v, idx = scores.sort(0)  # sort in ascending order    对每个框面积升序排列，得到索引
+    
+    idx = idx[-top_k:]  # indices of the top-k largest vals   得到框面积最大的后top_k个的索引（索引对应的元素依旧是从小到大的顺序）
+    xx1 = boxes.new()   # 新建一个空的Tensor
+    yy1 = boxes.new()
+    xx2 = boxes.new()
+    yy2 = boxes.new()
+    w = boxes.new()
+    h = boxes.new()
+
+    count = 0
+    while idx.numel() > 0:   # idx不为空，一直循环
+        i = idx[-1]  # index of current largest val   # 当前最大的rect的索引
+        keep[count] = i   # 当前最大的rect的索引放到keep中
+        count += 1        # 元素数量+1
+        if idx.size(0) == 1:   # 只剩1个索引，则退出
+            break
+        idx = idx[:-1]  # remove kept element from view   去除最后那个最大的索引，得到其他所有框的索引，用于下面计算和当前框的IoU使用
+        # load bboxes of next highest vals
+        torch.index_select(x1, 0, idx, out=xx1)   # 按0维（行）索引，将x1中第idx组数据取出来，放到xx1中（此处得到其他所有框的相应rect坐标，用于计算和当前框IoU中的交集）
+        torch.index_select(y1, 0, idx, out=yy1)
+        torch.index_select(x2, 0, idx, out=xx2)
+        torch.index_select(y2, 0, idx, out=yy2)
+        # store element-wise max with next highest score
+        xx1 = torch.clamp(xx1, min=x1[i])   # 截断，确保xx1中所有值都不小于x1[i]，由于需要计算交集，因而确保交集都在当前框内部
+        yy1 = torch.clamp(yy1, min=y1[i])
+        xx2 = torch.clamp(xx2, max=x2[i])   # 截断，确保xx2中所有值都不大于x2[i]，由于需要计算交集，因而确保交集都在当前框内部
+        yy2 = torch.clamp(yy2, max=y2[i])
+        w.resize_as_(xx2)
+        h.resize_as_(yy2)
+        w = xx2 - xx1    # 交集的宽度
+        h = yy2 - yy1    # 交集的高度
+        # check sizes of xx1 and xx2.. after each iteration
+        w = torch.clamp(w, min=0.0)    # 确保交集宽高不小于0
+        h = torch.clamp(h, min=0.0)
+        inter = w*h    # 交集
+        # IoU = i / (area(a) + area(b) - i)  # 交并比
+        rem_areas = torch.index_select(area, 0, idx)  # load remaining areas     取剩下的rect的面积
+        union = (rem_areas - inter) + area[i]     # 两个rect并集的面积（实际是一组rect和当前rect的并集的面积）
+        IoU = inter/union  # store result in iou   # 一组rect和当前rect的IoU
+        # keep only elements with an IoU <= overlap
+        idx = idx[IoU.le(overlap)]    #  抑制和当前框IoU过大的其他框，得到新的索引
+    return keep, count    # 得到保留的索引（实际为top_k个，不过count之后的均为0），及保留的索引的数量
+```
+</details>
+
+
+### P3.4 VOCDetection
+
+train和test中会调用VOCDetection，用于得到voc的信息，供DataLoader使用。其位于data/voc0712.py中。
+
+<details>
+
+```python
+class VOCDetection(data.Dataset):
+    """VOC Detection Dataset Object
+    input is image, target is annotation
+    Arguments:
+        root (string): filepath to VOCdevkit folder.
+        image_set (string): imageset to use (eg. 'train', 'val', 'test')
+        transform (callable, optional): transformation to perform on the input image
+        target_transform (callable, optional): transformation to perform on the target `annotation`
+            (eg: take in caption string, return tensor of word indices)
+        dataset_name (string, optional): which dataset to load. (default: 'VOC2007')
+    """
+
+    def __init__(self, root,
+                 image_sets=[('2012', 'trainval')],   # ('2007', 'trainval'), 
+                 transform=None, target_transform=VOCAnnotationTransform(),
+                 dataset_name='VOC0712'):
+        self.root = root              # 根目录
+        self.image_set = image_sets   # voc数据库相应序列
+        self.transform = transform    # SSDAugmentation
+        self.target_transform = target_transform   # 对target_进行变换，从实际标签映射到训练所需的标签：[[xmin, ymin, xmax, ymax, label_ind], ... ]
+        self.name = dataset_name
+        self._annopath = osp.join('%s', 'Annotations', '%s.xml')    # voc子库对应信息的路径，方便下面拼接具体路径
+        self._imgpath = osp.join('%s', 'JPEGImages', '%s.jpg')      # voc对应图片的路径，方便下面拼接具体路径
+        self.ids = list()   # 每个图像相关信息
+        for (year, name) in image_sets:
+            rootpath = osp.join(self.root, 'VOC' + year)
+            for line in open(osp.join(rootpath, 'ImageSets', 'Main', name + '.txt')):
+                self.ids.append((rootpath, line.strip()))   # 得到每个图像相关信息
+
+    def __getitem__(self, index):    # 外部iter在next时会调用
+        im, gt, h, w = self.pull_item(index)   # 得到图像，gt信息，高、宽
+
+        return im, gt   # 返回图像、gt信息
+
+    def __len__(self):
+        return len(self.ids)   # 返回当前数据库图像数量
+
+    def pull_item(self, index):    # 得到图像，gt信息，高、宽
+        img_id = self.ids[index]
+
+        target = ET.parse(self._annopath % img_id).getroot()   # 得到相关信息
+        img = cv2.imread(self._imgpath % img_id)     # 得到图像
+        height, width, channels = img.shape
+
+        if self.target_transform is not None:
+            target = self.target_transform(target, width, height)   # 对图像相关信息进行相应变换，返回当前图像中目标个数的训练所需的标签：[[xmin, ymin, xmax, ymax, label_ind], ... ]
+
+        if self.transform is not None:
+            target = np.array(target)
+            img, boxes, labels = self.transform(img, target[:, :4], target[:, 4])   # 对图像进行相应变换，有随机裁剪，因而目标数量可能变少（祛除了不满足裁剪条件的目标）
+            img = img[:, :, (2, 1, 0)]    # 图像从cv2的bgr变换到rgb
+            target = np.hstack((boxes, np.expand_dims(labels, axis=1)))     # 拼接bbox和labels，同时更新target
+        return torch.from_numpy(img).permute(2, 0, 1), target, height, width   # permute(2, 0, 1)将图像从cv2的HWC变换到CHW
+
+    def pull_image(self, index):   # 读取图像
+        '''Returns the original image object at index in PIL form
+
+        Note: not using self.__getitem__(), as any transformations passed in
+        could mess up this functionality.
+
+        Argument:
+            index (int): index of img to show
+        Return:
+            PIL img
+        '''
+        img_id = self.ids[index]
+        return cv2.imread(self._imgpath % img_id, cv2.IMREAD_COLOR)   # 读取图像  HWC
+
+    def pull_anno(self, index):   # 得到图像相关信息
+        '''Returns the original annotation of image at index
+
+        Note: not using self.__getitem__(), as any transformations passed in
+        could mess up this functionality.
+
+        Argument:
+            index (int): index of img to get annotation of
+        Return:
+            list:  [img_id, [(label, bbox coords),...]]
+                eg: ('001718', [('dog', (96, 13, 438, 332))])
+        '''
+        img_id = self.ids[index]
+        anno = ET.parse(self._annopath % img_id).getroot()
+        gt = self.target_transform(anno, 1, 1)
+        return img_id[1], gt     # 得到图像相关信息
+
+    def pull_tensor(self, index):
+        '''Returns the original image at an index in tensor form
+
+        Note: not using self.__getitem__(), as any transformations passed in
+        could mess up this functionality.
+
+        Argument:
+            index (int): index of img to show
+        Return:
+            tensorized version of img, squeezed
+        '''
+        return torch.Tensor(self.pull_image(index)).unsqueeze_(0)   # 得到当前数据库中第index张图像
+```
+</details>
+
+### P3.5 SSDAugmentation
+
+VOCDetection参数中包含SSDAugmentation，用于对数据进行扰动。其只在训练阶段使用，测试阶段不使用。位于utils/augmentations.py中。
+
+扰动主要包括亮度、对比度、色度、饱和度调整，随机交换图像通道，图像随机扩大（粘贴到更大的背景上，边界填充mean），随机裁剪，随机镜像，缩放到固定尺寸（SSD最终输入的尺寸），减均值。
+
+<details>
+
+```python
+def intersect(box_a, box_b):
+    max_xy = np.minimum(box_a[:, 2:], box_b[2:])
+    min_xy = np.maximum(box_a[:, :2], box_b[:2])
+    inter = np.clip((max_xy - min_xy), a_min=0, a_max=np.inf)
+    return inter[:, 0] * inter[:, 1]
+
+def jaccard_numpy(box_a, box_b):
+    """Compute the jaccard overlap of two sets of boxes.  The jaccard overlap
+    is simply the intersection over union of two boxes.
+    E.g.:
+        A ∩ B / A ∪ B = A ∩ B / (area(A) + area(B) - A ∩ B)
+    Args:
+        box_a: Multiple bounding boxes, Shape: [num_boxes,4]
+        box_b: Single bounding box, Shape: [4]
+    Return:
+        jaccard overlap: Shape: [box_a.shape[0], box_a.shape[1]]
+    """
+    inter = intersect(box_a, box_b)
+    area_a = ((box_a[:, 2]-box_a[:, 0]) *
+              (box_a[:, 3]-box_a[:, 1]))  # [A,B]
+    area_b = ((box_b[2]-box_b[0]) *
+              (box_b[3]-box_b[1]))  # [A,B]
+    union = area_a + area_b - inter
+    return inter / union  # [A,B]
+
+class Compose(object):
+    """Composes several augmentations together.
+    Args:
+        transforms (List[Transform]): list of transforms to compose.
+    Example:
+        >>> augmentations.Compose([
+        >>>     transforms.CenterCrop(10),
+        >>>     transforms.ToTensor(),
+        >>> ])
+    """
+
+    def __init__(self, transforms):
+        self.transforms = transforms
+
+    def __call__(self, img, boxes=None, labels=None):
+        for t in self.transforms:
+            img, boxes, labels = t(img, boxes, labels)
+        return img, boxes, labels
+
+
+class ConvertFromInts(object):   # 图像变换到float32
+    def __call__(self, image, boxes=None, labels=None):
+        return image.astype(np.float32), boxes, labels
+
+class SubtractMeans(object):   # 图像减去均值
+    def __init__(self, mean):
+        self.mean = np.array(mean, dtype=np.float32)
+
+    def __call__(self, image, boxes=None, labels=None):
+        image = image.astype(np.float32)
+        image -= self.mean
+        return image.astype(np.float32), boxes, labels
+
+class ToAbsoluteCoords(object):   # bbox从相对坐标变换到绝对坐标
+    def __call__(self, image, boxes=None, labels=None):
+        height, width, channels = image.shape
+        boxes[:, 0] *= width
+        boxes[:, 2] *= width
+        boxes[:, 1] *= height
+        boxes[:, 3] *= height
+        return image, boxes, labels
+
+class ToPercentCoords(object):   # 变换到相对坐标
+    def __call__(self, image, boxes=None, labels=None):
+        height, width, channels = image.shape
+        boxes[:, 0] /= width
+        boxes[:, 2] /= width
+        boxes[:, 1] /= height
+        boxes[:, 3] /= height
+
+        return image, boxes, labels
+
+class Resize(object):   # resize图像到宽高均为300
+    def __init__(self, size=300):
+        self.size = size
+
+    def __call__(self, image, boxes=None, labels=None):
+        image = cv2.resize(image, (self.size, self.size))
+        return image, boxes, labels
+
+class RandomSaturation(object):   # 在hsv色彩空间中调整图像饱和度（实际为饱和度通道乘以0.5-1.5的随机系数）
+    def __init__(self, lower=0.5, upper=1.5):
+        self.lower = lower
+        self.upper = upper
+        assert self.upper >= self.lower, "contrast upper must be >= lower."
+        assert self.lower >= 0, "contrast lower must be non-negative."
+
+    def __call__(self, image, boxes=None, labels=None):
+        if random.randint(2):
+            image[:, :, 1] *= random.uniform(self.lower, self.upper)
+
+        return image, boxes, labels
+
+class RandomHue(object):   # 在hsv色彩空间中调整图像色度（实际为色度通道加上-delta到delta内的随机值）
+    def __init__(self, delta=18.0):
+        assert delta >= 0.0 and delta <= 360.0
+        self.delta = delta
+
+    def __call__(self, image, boxes=None, labels=None):
+        if random.randint(2):
+            image[:, :, 0] += random.uniform(-self.delta, self.delta)
+            image[:, :, 0][image[:, :, 0] > 360.0] -= 360.0
+            image[:, :, 0][image[:, :, 0] < 0.0] += 360.0
+        return image, boxes, labels
+
+class RandomLightingNoise(object):   # 随机交换图像通道
+    def __init__(self):
+        self.perms = ((0, 1, 2), (0, 2, 1),
+                      (1, 0, 2), (1, 2, 0),
+                      (2, 0, 1), (2, 1, 0))
+
+    def __call__(self, image, boxes=None, labels=None):
+        if random.randint(2):
+            swap = self.perms[random.randint(len(self.perms))]
+            shuffle = SwapChannels(swap)  # shuffle channels    # 随机交换通道调用的函数
+            image = shuffle(image)
+        return image, boxes, labels
+
+class ConvertColor(object):   # 图像从current色彩空间变换到transform色彩空间
+    def __init__(self, current='BGR', transform='HSV'):
+        self.transform = transform
+        self.current = current
+
+    def __call__(self, image, boxes=None, labels=None):
+        if self.current == 'BGR' and self.transform == 'HSV':
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        elif self.current == 'HSV' and self.transform == 'BGR':
+            image = cv2.cvtColor(image, cv2.COLOR_HSV2BGR)
+        else:
+            raise NotImplementedError
+        return image, boxes, labels
+
+class RandomContrast(object):   # 图像对比度调整（实际为图像乘以一个0.5到1.5之内的随机的系数）
+    def __init__(self, lower=0.5, upper=1.5):
+        self.lower = lower
+        self.upper = upper
+        assert self.upper >= self.lower, "contrast upper must be >= lower."
+        assert self.lower >= 0, "contrast lower must be non-negative."
+
+    # expects float image
+    def __call__(self, image, boxes=None, labels=None):
+        if random.randint(2):
+            alpha = random.uniform(self.lower, self.upper)
+            image *= alpha
+        return image, boxes, labels
+
+class RandomBrightness(object):    # 图像亮度调整（实际为亮度通道加上-delta到delta内的随机值）
+    def __init__(self, delta=32):
+        assert delta >= 0.0
+        assert delta <= 255.0
+        self.delta = delta
+
+    def __call__(self, image, boxes=None, labels=None):
+        if random.randint(2):
+            delta = random.uniform(-self.delta, self.delta)
+            image += delta
+        return image, boxes, labels
+
+class ToCV2Image(object):
+    def __call__(self, tensor, boxes=None, labels=None):
+        return tensor.cpu().numpy().astype(np.float32).transpose((1, 2, 0)), boxes, labels
+
+class ToTensor(object):
+    def __call__(self, cvimage, boxes=None, labels=None):
+        return torch.from_numpy(cvimage.astype(np.float32)).permute(2, 0, 1), boxes, labels
+
+class RandomSampleCrop(object):    # 随机裁剪，并对相应的gt box进行变换
+    """Crop
+    Arguments:
+        img (Image): the image being input during training
+        boxes (Tensor): the original bounding boxes in pt form
+        labels (Tensor): the class labels for each bbox
+        mode (float tuple): the min and max jaccard overlaps
+    Return:
+        (img, boxes, classes)
+            img (Image): the cropped image
+            boxes (Tensor): the adjusted bounding boxes in pt form
+            labels (Tensor): the class labels for each bbox
+    """
+    def __init__(self):
+        self.sample_options = (
+            # using entire original input image
+            None,
+            # sample a patch s.t. MIN jaccard w/ obj in .1,.3,.4,.7,.9
+            (0.1, None),   # min_iou, max_iou
+            (0.3, None),
+            (0.7, None),
+            (0.9, None),
+            # randomly sample a patch
+            (None, None),
+        )
+
+    def __call__(self, image, boxes=None, labels=None):
+        height, width, _ = image.shape
+        while True:
+            mode = random.choice(self.sample_options)   # randomly choose a mode  # 从self.sample_options随机选一个
+            if mode is None:
+                return image, boxes, labels
+
+            min_iou, max_iou = mode
+            if min_iou is None:
+                min_iou = float('-inf')
+            if max_iou is None:
+                max_iou = float('inf')
+
+            # max trails (50)
+            for _ in range(50):
+                current_image = image
+
+                w = random.uniform(0.3 * width, width)   # 随机宽高
+                h = random.uniform(0.3 * height, height)
+
+                # aspect ratio constraint b/t .5 & 2
+                if h / w < 0.5 or h / w > 2:   # 保证图像宽高比在0.5到2之间
+                    continue
+
+                left = random.uniform(width - w)   # 裁剪的左上角位置
+                top = random.uniform(height - h)
+                rect = np.array([int(left), int(top), int(left+w), int(top+h)])   # 裁剪的区域   # convert to integer rect x1,y1,x2,y2
+                overlap = jaccard_numpy(boxes, rect)   # 计算gt box和裁剪区域的iou   # calculate IoU (jaccard overlap) b/t the cropped and gt boxes
+
+                # is min and max overlap constraint satisfied? if not try again
+                if overlap.min() < min_iou and max_iou < overlap.max():    # 保证裁剪区域iou满足条件
+                    continue
+
+                current_image = current_image[rect[1]:rect[3], rect[0]:rect[2],:]  # 裁剪图像  # cut the crop from the image 
+                
+                centers = (boxes[:, :2] + boxes[:, 2:]) / 2.0     # 裁剪前的目标中心   # keep overlap with gt box IF center in sampled patch
+                m1 = (rect[0] < centers[:, 0]) * (rect[1] < centers[:, 1])   # 得到裁剪后起点在裁剪前目标左上侧的gt box的mask  # mask in all gt boxes that above and to the left of centers
+                m2 = (rect[2] > centers[:, 0]) * (rect[3] > centers[:, 1])   # 得到裁剪后终点在裁剪前目标右下侧的gt box的mask  # mask in all gt boxes that under and to the right of centers
+                mask = m1 * m2    # 得到裁剪后起点在裁剪前目标左上侧、终点在裁剪后图像右下侧的gt box的mask  # mask in that both m1 and m2 are true
+                
+                if not mask.any():   # 不存在满足条件的mask吗，则continue   # have any valid boxes? try again if not
+                    continue
+               
+                current_boxes = boxes[mask, :].copy()   # 得到满足条件的gt box    # take only matching gt boxes
+                current_labels = labels[mask]           # 得到满足条件的labels   # take only matching gt labels
+                current_boxes[:, :2] = np.maximum(current_boxes[:, :2], rect[:2])   # 不能超出裁剪后的rect的边界  # should we use the box left and top corner or the crop's
+                current_boxes[:, :2] -= rect[:2]     # 减去裁剪时的起点，得到裁剪后的gt box的起点坐标  # adjust to crop (by substracting crop's left,top)
+                current_boxes[:, 2:] = np.minimum(current_boxes[:, 2:], rect[2:])   # 不能超出裁剪后的rect的边界
+                current_boxes[:, 2:] -= rect[:2]     # 减去裁剪时的终点，得到裁剪后的gt box的终点坐标  # adjust to crop (by substracting crop's left,top)
+
+                return current_image, current_boxes, current_labels   # 有满足条件的裁剪后图像时，则直接返回
+
+class Expand(object):  # 对图像进行随机扩大（非放大。扩大是图像粘贴到更大的背景上，粘贴的图像本身未放大）并填充mean
+    def __init__(self, mean):
+        self.mean = mean
+
+    def __call__(self, image, boxes, labels):
+        if random.randint(2):
+            return image, boxes, labels
+
+        height, width, depth = image.shape
+        ratio = random.uniform(1, 4)
+        left = random.uniform(0, width*ratio - width)
+        top = random.uniform(0, height*ratio - height)
+
+        expand_image = np.zeros((int(height*ratio), int(width*ratio), depth), dtype=image.dtype)
+        expand_image[:, :, :] = self.mean
+        expand_image[int(top):int(top + height), int(left):int(left + width)] = image
+        image = expand_image
+
+        boxes = boxes.copy()    # 扩大时，对bbx信息也进行相应修改
+        boxes[:, :2] += (int(left), int(top))    # 修改坐标起点
+        boxes[:, 2:] += (int(left), int(top))    # 修改坐标终点
+
+        return image, boxes, labels
+
+class RandomMirror(object):   # 随机对图像镜像
+    def __call__(self, image, boxes, classes):
+        _, width, _ = image.shape
+        if random.randint(2):
+            image = image[:, ::-1]
+            boxes = boxes.copy()
+            boxes[:, 0::2] = width - boxes[:, 2::-2]
+        return image, boxes, classes
+
+class SwapChannels(object):   # 随机交换通道调用的函数
+    """Transforms a tensorized image by swapping the channels in the order
+     specified in the swap tuple.
+    Args:
+        swaps (int triple): final order of channels
+            eg: (2, 1, 0)
+    """
+
+    def __init__(self, swaps):
+        self.swaps = swaps
+
+    def __call__(self, image):
+        """
+        Args:
+            image (Tensor): image tensor to be transformed
+        Return:
+            a tensor with channels swapped according to swap
+        """
+        # if torch.is_tensor(image):
+        #     image = image.data.cpu().numpy()
+        # else:
+        #     image = np.array(image)
+        image = image[:, :, self.swaps]
+        return image
+
+class PhotometricDistort(object):   # 对图像进行失真操作，如亮度、对比度调整等
+    def __init__(self):
+        self.pd = [
+            RandomContrast(),               # 图像对比度调整（实际为图像乘以一个0.5到1.5之内的随机的系数）
+            ConvertColor(transform='HSV'),  # 图像从RGB色彩空间变换到HSV色彩空间
+            RandomSaturation(),             # 在hsv色彩空间中调整图像饱和度（实际为饱和度通道乘以0.5-1.5的随机系数）
+            RandomHue(),                    # 在hsv色彩空间中调整图像色度（实际为色度通道加上-delta到delta内的随机值）
+            ConvertColor(current='HSV', transform='BGR'),   # 图像从HSV色彩空间变换到RGB色彩空间
+            RandomContrast()                # 图像对比度调整（实际为图像乘以一个0.5到1.5之内的随机的系数）
+        ]
+        self.rand_brightness = RandomBrightness()           # 图像亮度调整（实际为亮度通道加上-delta到delta内的随机值）
+        self.rand_light_noise = RandomLightingNoise()       # 随机交换图像通道
+
+    def __call__(self, image, boxes, labels):
+        im = image.copy()
+        im, boxes, labels = self.rand_brightness(im, boxes, labels)   # 先随机调整图像亮度
+        if random.randint(2):
+            distort = Compose(self.pd[:-1])    # 然后对图像进行正向随机失真调整
+        else:
+            distort = Compose(self.pd[1:])     # 然后对图像进行反向随机失真调整
+        im, boxes, labels = distort(im, boxes, labels)     # 对图像进行随机失真操作
+        return self.rand_light_noise(im, boxes, labels)    # 最后对图像进行随机交换通道并返回
+
+class SSDAugmentation(object):   # ssd的SSDAugmentation
+    def __init__(self, size=300, mean=(104, 117, 123)):
+        self.mean = mean   # 均值
+        self.size = size
+        self.augment = Compose([
+            ConvertFromInts(),        # 图像变换到float32
+            ToAbsoluteCoords(),       # bbox从相对坐标变换到绝对坐标（因下面某些变换要使用绝对坐标）
+            PhotometricDistort(),     # 对图像进行失真操作，如亮度、对比度调整等
+            Expand(self.mean),        # 对图像进行随机扩大（非放大。扩大是图像粘贴到更大的背景上，粘贴的图像本身未放大）并填充mean
+            RandomSampleCrop(),       # 随机裁剪，并对相应的gt box进行变换
+            RandomMirror(),           # 随机对图像镜像
+            ToPercentCoords(),        # 从绝对坐标变换到相对坐标（因最终要使用相对坐标）
+            Resize(self.size),        # resize图像到宽高均为300
+            SubtractMeans(self.mean)  # 图像减去均值。
+        ])
+
+    def __call__(self, img, boxes, labels):
+        return self.augment(img, boxes, labels)
+```
+</details>
+
+
+### P3.6 VOCAnnotationTransform
+
+VOCDetection参数中包含VOCAnnotationTransform，用于对标签进行变换，从实际标签映射到训练所需的标签。其在训练和测试阶段均使用。位于data/voc0712.py中。
+
+<details>
+
+```python
+VOC_CLASSES = (  # always index 0    voc的对应类别
+    'aeroplane', 'bicycle', 'bird', 'boat',
+    'bottle', 'bus', 'car', 'cat', 'chair',
+    'cow', 'diningtable', 'dog', 'horse',
+    'motorbike', 'person', 'pottedplant',
+    'sheep', 'sofa', 'train', 'tvmonitor')
+
+# note: if you used our download scripts, this should be right
+# VOC_ROOT = osp.join(HOME, "data/VOCdevkit/")
+VOC_ROOT = osp.join('D:/download', "data/VOCdevkit/")
+
+class VOCAnnotationTransform(object):
+    """Transforms a VOC annotation into a Tensor of bbox coords and label index
+    Initilized with a dictionary lookup of classnames to indexes
+
+    Arguments:
+        class_to_ind (dict, optional): dictionary lookup of classnames -> indexes
+            (default: alphabetic indexing of VOC's 20 classes)
+        keep_difficult (bool, optional): keep difficult instances or not. (default: False)
+        height (int): height
+        width (int): width
+    """
+
+    def __init__(self, class_to_ind=None, keep_difficult=False):
+        self.class_to_ind = class_to_ind or dict(zip(VOC_CLASSES, range(len(VOC_CLASSES))))   # 从数据库中的实际类别（如bicycle）变换到训练所需的id（0, 1...）
+        self.keep_difficult = keep_difficult
+
+    def __call__(self, target, width, height):
+        """
+        Arguments:
+            target (annotation) : the target annotation to be made usable will be an ET.Element
+        Returns:
+            a list containing lists of bounding boxes  [bbox coords, class name]
+        """
+        # 一张图像上可能有多个训练目标（如3个），每个会有如下信息：
+        # <object>
+        # <name>bicycle</name>
+        # <pose>Left</pose>
+        # <truncated>1</truncated>
+        # <difficult>0</difficult>
+        # <bndbox>
+        #   <xmin>1</xmin>
+        #   <ymin>178</ymin>
+        #   <xmax>235</xmax>
+        #   <ymax>331</ymax>
+        # </bndbox>
+        res = []
+        for obj in target.iter('object'):   # 一次遍历当前图像上每个目标
+            difficult = int(obj.find('difficult').text) == 1   # 对比xml中当前图像当前目标的difficult是否为1
+            if not self.keep_difficult and difficult:
+                continue
+            name = obj.find('name').text.lower().strip()   # 当前目标的类别，如bicycle
+            bbox = obj.find('bndbox')  # 当前目标的bbox
+
+            pts = ['xmin', 'ymin', 'xmax', 'ymax']   # 当前目标的四个坐标
+            bndbox = []
+            for i, pt in enumerate(pts):
+                cur_pt = int(bbox.find(pt).text) - 1
+                cur_pt = cur_pt / width if i % 2 == 0 else cur_pt / height   # scale height or width  # 坐标归一化。
+                bndbox.append(cur_pt)
+            label_idx = self.class_to_ind[name]   # 当前目标的类别映射到训练使用的实际类别（变换到0-n）。
+            bndbox.append(label_idx)   # bndbox中增加类别
+            res += [bndbox]  # [xmin, ymin, xmax, ymax, label_ind]   # res中增加当前目标
+
+        return res  # 返回结果，如下：实际目标个数的二维矩阵：[[xmin, ymin, xmax, ymax, label_ind], ... ]
+```
+</details>
+
+
+### P3.7 损失函数MultiBoxLoss
+
+位于layers/modules/multibox_loss.py。
+
+#### P3.7.1 MultiBoxLoss
+
+<details>
+
+```python
+class MultiBoxLoss(nn.Module):
+    """SSD Weighted Loss Function
+    Compute Targets:
+        1) Produce Confidence Target Indices by matching  ground truth boxes with (default) 'priorboxes' that have jaccard index > threshold parameter
+           (default threshold: 0.5).
+        2) Produce localization target by 'encoding' variance into offsets of ground truth boxes and their matched  'priorboxes'.
+        3) Hard negative mining to filter the excessive number of negative examples that comes with using a large number of default bounding boxes.
+           (default negative:positive ratio 3:1)
+    Objective Loss:
+        L(x,c,l,g) = (Lconf(x, c) + αLloc(x,l,g)) / N
+        Where, Lconf is the CrossEntropy Loss and Lloc is the SmoothL1 Loss weighted by α which is set to 1 by cross val.
+        Args:
+            c: class confidences,   分类的置信度
+            l: predicted boxes,     预测框
+            g: ground truth boxes   gt box
+            N: number of matched default boxes   匹配的default box数量
+        See: https://arxiv.org/pdf/1512.02325.pdf for more details.
+    """
+
+    def __init__(self, num_classes, overlap_thresh, prior_for_matching, bkg_label, 
+                 neg_mining, neg_pos, neg_overlap, encode_target, use_gpu=True):
+        super(MultiBoxLoss, self).__init__()
+        self.use_gpu = use_gpu
+        self.num_classes = num_classes   # 分类的类别数量
+        self.threshold = overlap_thresh  # 重叠阈值  0.5
+        self.background_label = bkg_label  # 0
+        self.encode_target = encode_target  # False
+        self.use_prior_for_matching = prior_for_matching   # True
+        self.do_neg_mining = neg_mining  # True
+        self.negpos_ratio = neg_pos  # 3
+        self.neg_overlap = neg_overlap  # 0.5
+        self.variance = cfg['variance']
+
+    def forward(self, predictions, targets):
+        # 训练阶段只会滤除和gt box的IoU小于阈值的，将这些设置为背景。而后难例挖掘，不会进行nms
+        """Multibox Loss
+        Args:
+            predictions (tuple): A tuple containing loc preds, conf preds, and prior boxes from SSD net.
+                conf shape: torch.size(batch_size,num_priors,num_classes)
+                loc shape: torch.size(batch_size,num_priors,4)
+                priors shape: torch.size(num_priors,4)
+
+            targets (tensor): Ground truth boxes and labels for a batch,
+                shape: [batch_size,num_objs,5] (last idx is the label).
+        """
+        # loc_data：bs*N*4的坐标。此处为预测的密集坐标（预测的偏移）   N为密集框的数量
+        # conf_data：bs*N*num_classes的分类结果。此处为预测的密集类别（此处为特征，无softmax计算概率）
+        # priors：不同分辨率的密集先验坐标（输入图像宽高一样，因而共用先验坐标即可）：N*4。N个[cx, cy, w, h]。此处为密集先验坐标
+        loc_data, conf_data, priors = predictions   #  实际的目标信息
+        num = loc_data.size(0)   # batch size
+        priors = priors[:loc_data.size(1), :]  # 取前loc_data.size(1)个。实际上priors.size(0)=loc_data.size(1)，即都取了
+        num_priors = (priors.size(0))  # 密集目标的数量
+
+        # match priors (default boxes) and ground truth boxes
+        loc_t = torch.Tensor(num, num_priors, 4)    # bs*密集目标的数量*4    密集真实框（类似anchor）rect信息
+        conf_t = torch.LongTensor(num, num_priors)    # bs*密集目标的数量    密集真实框label信息
+        for idx in range(num):     # 依次对当前batch中每张图像prior box和gt box进行匹配
+            truths = targets[idx][:, :-1].data   # 当前图像的gt box，数量很少，可能就几个或者一两个，gt的前四列：bbox
+            labels = targets[idx][:, -1].data    # 当前图像的gt label，数量很少，可能就几个或者一两个，gt的最后一列：label
+            defaults = priors.data   # 密集prior目标。特征图上每个分辨率的每个位置，均含有目标（一个位置含有多个rect，用于不同比例及不同大小），用于匹配。
+            # match之后，得到多分辨率特征图上每个密集prior的信息（rect和label），同时将和gt的IoU小于阈值的prior box设置为负样本（对应类别conf_t[idx]设置为0）
+            match(self.threshold, truths, defaults, self.variance, labels, loc_t, conf_t, idx)  # 将密集prior box和gt box进行匹配，得到当前图像密集prior box，并修改第idx个loc_t, conf_t
+        
+        if self.use_gpu:
+            loc_t = loc_t.cuda()
+            conf_t = conf_t.cuda()
+        # wrap targets
+        loc_t = Variable(loc_t, requires_grad=False)     # bs*N*4
+        conf_t = Variable(conf_t, requires_grad=False)   # bs*N
+
+        pos = conf_t > 0     # 真实目标的mask  bs*N 
+        num_pos = pos.sum(dim=1, keepdim=True)   # 当前batch中每个图像上真实目标的个数   # bs*1   此时每张图像上真实的目标不会太多，主要是和gt目标比较近的目标
+
+        # Localization Loss (Smooth L1)
+        # Shape: [batch,num_priors,4]
+        pos_idx = pos.unsqueeze(pos.dim()).expand_as(loc_data)    #  pos增加维度，实际为pos的mask  bs*N ->   # bs*N*4
+        loc_p = loc_data[pos_idx].view(-1, 4)   # 得到当前batch中所有预测的坐标（此时没有bs了）  sum(num_pos)*4  如num_pos=[16,11,26,11,4,22,12,28], 则loc_p为130*4
+        loc_t = loc_t[pos_idx].view(-1, 4)      # 得到当前batch中所有真实的坐标（此时没有bs了）  sum(num_pos)*4  如num_pos=[16,11,26,11,4,22,12,28], 则loc_p为130*4
+        loss_l = F.smooth_l1_loss(loc_p, loc_t, size_average=False)   # 正样本预测框和真实框的smooth l1损失
+
+        # Compute max conf across batch for hard negative mining   难例挖掘
+        batch_conf = conf_data.view(-1, self.num_classes)   # reshanpe成 (bs*N) * self.num_classes，用于计算分类损失。此处为预测类别的特征
+        loss_c = log_sum_exp(batch_conf) - batch_conf.gather(1, conf_t.view(-1, 1))   # batch_conf.gather(1, conf_t.view(-1, 1))用于取出密集预测框实际label对应的特征（置信度）
+
+        loss_c = loss_c.view(num, -1)      # bs*N
+        # Hard Negative Mining    以下为难例挖掘
+        loss_c[pos] = 0  # filter out pos boxes for now     去除正样本的损失，防止正样本影响负样本的选择
+        
+        # 假如loss_idx=[4 7 0 5 6 1 3 2]，则idx_rank=[2 5 7 6 0 3 4 1]，取idx_rank<3作为mask，则mask=[1 0 0 0 1 0 0 1]，则data[mask]可以取到data的0,4,7个，即loss_idx的前3个
+        _, loss_idx = loss_c.sort(1, descending=True)   #  每个图像上负样本从难到易（loss由高到低）的索引    bs*N
+        _, idx_rank = loss_idx.sort(1)    # 对loss_idx排序，得到新的索引。见上面注释。由于loss_idx只是0-N的不同顺序，下面需要取loss_idx前num_neg个，loss_idx前几个的值即是loss_c的索引。对loss_idx排序取索引后得到的idx_rank作为mask，可通过其值<num_neg得到原始数据的索引
+        num_pos = pos.long().sum(1, keepdim=True)     # 当前batch中每个图像上真实目标的个数   # bs*1   此时每张图像上真实的目标不会太多，主要是和gt目标比较近的目标
+        num_neg = torch.clamp(self.negpos_ratio*num_pos, max=pos.size(1)-1)    # 当前batch中每个图像上负样本的个数
+        neg = idx_rank < num_neg.expand_as(idx_rank)    # 选择的负样本的mask
+
+        # Confidence Loss Including Positive and Negative Examples
+        pos_idx = pos.unsqueeze(2).expand_as(conf_data)    # 正样本索引
+        neg_idx = neg.unsqueeze(2).expand_as(conf_data)    # 负样本索引
+        conf_p = conf_data[(pos_idx+neg_idx).gt(0)].view(-1, self.num_classes)   # 选中的预测的正样本和负样本的特征    (sum(num_pos)*(1+self.negpos_ratio))*self.num_classes  若loc_p为130*4（4为rect的坐标），则此处最多为520*self.num_classes
+        targets_weighted = conf_t[(pos+neg).gt(0)]     # 选中的archor的正样本和负样本的label
+        loss_c = F.cross_entropy(conf_p, targets_weighted, size_average=False)   # 使用CE计算预测特征（无需softmax）和真值label的交叉熵
+
+        # Sum of losses: L(x,c,l,g) = (Lconf(x, c) + αLloc(x,l,g)) / N
+
+        N = num_pos.data.sum()   # 正样本个数
+        loss_l /= N    # 定位误差除以正样本个数
+        loss_c /= N    # 分类误差除以正样本个数
+        return loss_l, loss_c   # 返回定位误差和分类误差
+```
+</details>
+
+
+#### P3.7.2 match
+
+计算损失时需要调用match将密集prior box和gt box匹配，得到当前图像密集prior box。其位于layers/box_utils.py。
+
+<details>
+
+```python
+def point_form(boxes):  # 从 [cx, cy, w, h]变换到[xmin, ymin, xmax, ymax]
+    """ Convert prior_boxes to (xmin, ymin, xmax, ymax) representation for comparison to point form ground truth data.
+    Args:
+        boxes: (tensor) center-size default boxes from priorbox layers.
+    Return:
+        boxes: (tensor) Converted xmin, ymin, xmax, ymax form of boxes.
+    """
+    return torch.cat((boxes[:, :2] - boxes[:, 2:]/2,     # xmin, ymin
+                     boxes[:, :2] + boxes[:, 2:]/2), 1)  # xmax, ymax
+
+def center_size(boxes): # 从 [xmin, ymin, xmax, ymax]变换到[cx, cy, w, h]
+    """ Convert prior_boxes to (cx, cy, w, h) representation for comparison to center-size form ground truth data.
+    Args:
+        boxes: (tensor) point_form boxes
+    Return:
+        boxes: (tensor) Converted xmin, ymin, xmax, ymax form of boxes.
+    """
+    return torch.cat((boxes[:, 2:] + boxes[:, :2])/2,  # cx, cy
+                     boxes[:, 2:] - boxes[:, :2], 1)  # w, h
+
+def intersect(box_a, box_b):   # 计算两个rect的交集area
+    """ We resize both tensors to [A,B,2] without new malloc:
+    [A,2] -> [A,1,2] -> [A,B,2]
+    [B,2] -> [1,B,2] -> [A,B,2]
+    Then we compute the area of intersect between box_a and box_b.
+    Args:
+      box_a: (tensor) bounding boxes, Shape: [A,4].
+      box_b: (tensor) bounding boxes, Shape: [B,4].
+    Return:
+      (tensor) intersection area, Shape: [A,B].
+    """
+    A = box_a.size(0)
+    B = box_b.size(0)
+    max_xy = torch.min(box_a[:, 2:].unsqueeze(1).expand(A, B, 2), box_b[:, 2:].unsqueeze(0).expand(A, B, 2))  # unsqueeze：增加一个维度
+    min_xy = torch.max(box_a[:, :2].unsqueeze(1).expand(A, B, 2), box_b[:, :2].unsqueeze(0).expand(A, B, 2))
+    inter = torch.clamp((max_xy - min_xy), min=0)
+    return inter[:, :, 0] * inter[:, :, 1]   # 交集area  [box_a.size(0), box_b.size(0)]
+
+def jaccard(box_a, box_b):   # 计算两个rect的IoU
+    """Compute the jaccard overlap of two sets of boxes.  The jaccard overlap is simply the intersection over union of two boxes. 
+    Here we operate on ground truth boxes and default boxes.
+    E.g.:
+        A ∩ B / A ∪ B = A ∩ B / (area(A) + area(B) - A ∩ B)
+    Args:
+        box_a: (tensor) Ground truth bounding boxes, Shape: [num_objects,4]
+        box_b: (tensor) Prior boxes from priorbox layers, Shape: [num_priors,4]
+    Return:
+        jaccard overlap: (tensor) Shape: [box_a.size(0), box_b.size(0)]
+    """
+    inter = intersect(box_a, box_b)  # 两个rect的交集的area
+    area_a = ((box_a[:, 2]-box_a[:, 0]) * (box_a[:, 3]-box_a[:, 1])).unsqueeze(1).expand_as(inter)  # [A,B]
+    area_b = ((box_b[:, 2]-box_b[:, 0]) * (box_b[:, 3]-box_b[:, 1])).unsqueeze(0).expand_as(inter)  # [A,B]
+    union = area_a + area_b - inter   # 两个rect的并集area
+
+    # IoU  每一行代表box_a的某一个框和box_b的所有框的IoU；每一列代表box_b的某一个框和box_a的所有框的IoU；
+    return inter / union  # [box_a.size(0), box_b.size(0)]  
+
+def match(threshold, truths, priors, variances, labels, loc_t, conf_t, idx):  
+    # truths是gt目标，priors是在特征图上选择的archors（密集选择，因而每个尺度的特征图上某个点对应不同大小的目标）
+    # 将密集目标（priors）和gt目标（truths）进行匹配，得到当前图像密集prior box，并修改第idx个loc_t, conf_t
+    """Match each prior box with the ground truth box of the highest jaccard overlap, encode the bounding boxes, 
+    then return the matched indices corresponding to both confidence and location preds.
+    Args:
+        threshold: (float) The overlap threshold used when mathing boxes.            匹配时IoU的阈值
+        truths: (tensor) Ground truth boxes, Shape: [num_obj, 4].                    gt box 当前图像实际目标数量*4
+        priors: (tensor) Prior boxes from priorbox layers, Shape: [num_priors,4].    当前图像密集目标数量*4
+        variances: (tensor) Variances corresponding to each prior coord, Shape: [2]或者[1].
+        labels: (tensor) All the class labels for the image, Shape: [num_obj].       当前图像实际目标label
+        loc_t: (tensor) Tensor to be filled w/ endcoded location targets.            待修改的返回值，图像密集prior box的位置信息
+        conf_t: (tensor) Tensor to be filled w/ matched indices for conf preds.      待修改的返回值，图像密集prior box的类别信息
+        idx: (int) current batch index
+    Return:
+        The matched indices corresponding to 1)location and 2)confidence preds.
+    """
+    # jaccard index   计算两个rect的IoU  每一行代表truths的某一个框和priors的所有框的IoU；每一列代表priors的某一个框和truths的所有框的IoU；
+    overlaps = jaccard(truths, point_form(priors))   # overlaps：[truths.size(0), priors.size(0)]，如3*8732   truths.size(0)很小，priors.size(0)很大（因为是密集目标）
+
+    # (Bipartite Matching)   # 二分图匹配
+    
+    best_prior_overlap, best_prior_idx = overlaps.max(1, keepdim=True)  # gt的每个框对应的密集先验priors的相应框的信息  [num_objects, 1] best prior for each ground truth
+    
+    best_truth_overlap, best_truth_idx = overlaps.max(0, keepdim=True)  # 密集先验priors的每个框对应的gt的相应框的信息   [1,num_priors] best ground truth for each prior
+    best_truth_idx.squeeze_(0)      # 共num_priors个，密集目标，所以数量很大，如8732
+    best_truth_overlap.squeeze_(0)  # 共num_priors个，密集目标，所以数量很大，如8732
+    best_prior_idx.squeeze_(1)      # 共num_obj个，实际目标，所以数量很少，如3
+    best_prior_overlap.squeeze_(1)  # 共num_obj个，实际目标，所以数量很少，如3
+    
+    # index_fill_:按照index（即best_prior_idx），将val（即2）的值填充best_truth_overlap的dim（即0）维度。
+    # 保证密集先验priors框对应的gt一定最大。即确保密集先验priors在实际目标位置的框一定能对应到gt框
+    best_truth_overlap.index_fill_(0, best_prior_idx, 2)  # ensure best prior  
+    # TODO refactor: index  best_prior_idx with long tensor ensure every gt matches with its prior of max overlap
+    for j in range(best_prior_idx.size(0)):   # 依次遍历每个gt框对应的先验框的索引（每张图上实际框很少，如3个），j为第几个实际目标
+        best_truth_idx[best_prior_idx[j]] = j   # 修改先验框priors对应gt框的索引（确保和best_truth_overlap.index_fill_所对应的目标一致）
+    matches = truths[best_truth_idx]          # Shape: [num_priors,4]   每个先验框priors匹配到的 gt rect，由于实际框很少，因而matches中有很多重复的rect（8732个框对应3个框，重复对应的很多）
+    conf = labels[best_truth_idx] + 1         # Shape: [num_priors]   每个先验框priors匹配到的gt的类别
+    conf[best_truth_overlap < threshold] = 0  # label as background   每个先验框priors匹配到的gt中那些和gt的IoU小于阈值的label设置为背景，只保留和实际框IoU较大的先验框作为目标（由于有重叠，因而保留的正样本密集框很少，如可能20来个，其他全是负样本，供之后nms）
+    loc = encode(matches, priors, variances)   # 根据论文中公式，对真实框matches和先验框priors的偏移（offset）进行编码
+    loc_t[idx] = loc    # [num_priors,4] encoded offsets to learn  修改当前batch第idx个真实框  loc_t：bs*N*4   loc：N*4   N为密集真实的数量，如8732
+    conf_t[idx] = conf  # [num_priors] top class label for each prior  修改当前batch第idx个输出结果   conf_t：bs*N  conf：N   N为密集真实的数量，如8732
+
+def encode(matched, priors, variances):   # 根据公式进行编码
+    """Encode the variances from the priorbox layers into the ground truth boxes we have matched (based on jaccard overlap) with the prior boxes.
+    Args:
+        matched: (tensor) Coords of ground truth for each prior in point-form, Shape: [num_priors, 4].   每个先验框对应的gt框的rect  [xmin, ymin, xmax, ymax]
+        priors: (tensor) Prior boxes in center-offset form, Shape: [num_priors,4].      每个先验框的rect   [cx, cy, w, h]
+        variances: (list[float]) Variances of priorboxes
+    Return:
+        encoded boxes (tensor), Shape: [num_priors, 4]
+    """
+
+    '''
+    g'_x=(g_x-d_x)/(d_w*var_0)    y同理，将d_w换成d_h
+    g'_w=log(g_w/d_w)/var_1       h同理
+    其中，g'为实际的offset（此处返回值），g为gt坐标（此处matched），d为先验坐标（此处priors）
+    '''
+    g_cxcy = (matched[:, :2] + matched[:, 2:])/2 - priors[:, :2]   # 前半部分得到matched的框的中心，整体得到每个真实框中心的偏移   # dist b/t match center and prior's center
+    g_cxcy /= (variances[0] * priors[:, 2:])   # 编码真实框中心偏移   # encode variance
+    g_wh = (matched[:, 2:] - matched[:, :2]) / priors[:, 2:]    # 前半部分得到真实框的宽高，整体得到真实框wh和先验框wh的比值  # match wh / prior wh
+    g_wh = torch.log(g_wh) / variances[1]   # 编码真实框的wh
+    return torch.cat([g_cxcy, g_wh], 1)  # [num_priors,4]    # 返回真实框编码后的结果  # return target for smooth_l1_loss
+
+def log_sum_exp(x):
+    """Utility function for computing log_sum_exp while determining
+    This will be used to determine unaveraged confidence loss across all examples in a batch.
+    Args:
+        x (Variable(tensor)): conf_preds from conf layers
+    """
+    x_max = x.data.max()
+    return torch.log(torch.sum(torch.exp(x-x_max), 1, keepdim=True)) + x_max
+```
+</details>
+
