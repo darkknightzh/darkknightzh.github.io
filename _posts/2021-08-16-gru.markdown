@@ -30,7 +30,7 @@ math: true
 
 ## 1. GRU
 
-GRU和LSTM一样，均是为了解决rnn中长期以来以及梯度消失的问题。GRU和LSTM效果类似，但是GRU计算更加简单。
+GRU和LSTM一样，均是为了解决rnn中长期依赖以及梯度消失的问题。GRU和LSTM效果类似，但是GRU计算更加简单。
 
 理解了rnn和LSTM之后，GRU更加容易理解。GRU只有2个门：更新门
 $${ {z}_{t}}$$

@@ -94,7 +94,12 @@ $${ {y}_{i}}\leftarrow \gamma { {\hat{x}}_{i}}+\beta $$
 
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 $$\mu :=\mu +\alpha \left( { {\mu }_{B}}-\mu  \right)$$
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 使用相当大的$\alpha $更新$$\mu $$和$$\sigma $$
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;// 使用相当大的
+$$\alpha $$
+更新
+$$\mu $$
+和
+$$\sigma $$
 
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 $$\sigma :=\sigma +\alpha \left( { {\sigma }_{B}}-\sigma  \right)$$

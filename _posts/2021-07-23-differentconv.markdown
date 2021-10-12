@@ -49,6 +49,47 @@ $${ {C}_{out}}\times { {C}_{in}}\times { {H}_{k}}\times { {W}_{k}}$$
 $${ {C}_{out}}\times { {C}_{in}}\times { {H}_{k}}\times { {W}_{k}}+{ {C}_{out}}$$
 。
 
+
+2D卷积的计算量：
+$${ {C}_{out}}\times { {C}_{in}}\times { {H}_{k}}\times { {W}_{k}}\times \left( { {H}_{in}}-{ {H}_{k}}+1 \right)\times \left( { {W}_{in}}-{ {W}_{k}}+1 \right)$$
+
+2D卷积输出特征大小为：
+
+$${ {H}_{out}}=\left\lfloor \frac{ { {H}_{in}}+2\times padding[0]-dilation[0]\times (kernel\_size[0]-1)-1}{stride[0]}+1 \right\rfloor $$
+
+$${ {W}_{out}}=\left\lfloor \frac{ { {W}_{in}}+2\times padding[1]-dilation[1]\times (kernel\_size[1]-1)-1}{stride[1]}+1 \right\rfloor $$
+
+2D卷积能在2维空间中编码目标的空间关系。
+
+
+# P2. 3D卷积
+
+2D卷积是指在3D立方体数据上进行的2D卷积，滤波器通道数Cin和输入特征通道数Cin相同，每个卷积核只在输入特征的高、宽这两个方向上滑动。在3D卷积中，滤波器的通道数小于输入特征的通道数，因而每个卷积核可以在输入特征的通道、高、宽这3个方向上滑动，因而输出为3D数据。如下图。
+
+![2](/assets/post/2021-07-23-differentconv/2.png)
+
+假定3D卷积输入特征
+$$\left[ { {C}_{in}},{ {D}_{in}},{ {H}_{in}},{ {W}_{in}} \right]$$
+，卷积核尺寸
+$$\left[ { {C}_{out}},{ {C}_{in}},{ {D}_{k}},{ {H}_{k}},{ {W}_{k}} \right]$$
+，在具体计算时，
+$${ {C}_{out}}$$
+个
+$$\left[ { {C}_{in}},{ {D}_{k}},{ {H}_{k}},{ {W}_{k}} \right]$$
+的卷积核和输入特征进行卷积，得到
+$${ {C}_{out}}$$
+个
+$$\left[ { {D}_{out}},{ {H}_{out}},{ {W}_{out}} \right]$$
+的特征，拼接后得到
+$$\left[ { {C}_{out}},{ {D}_{out}},{ {H}_{out}},{ {W}_{out}} \right]$$
+的输出。
+
+3D卷积参数量在不考虑bias时为
+$${ {C}_{out}}\times { {C}_{in}}\times { {D}_{k}}\times { {H}_{k}}\times { {W}_{k}}$$
+；考虑bias时为
+$${ {C}_{out}}\times { {C}_{in}}\times { {D}_{k}}\times { {H}_{k}}\times { {W}_{k}}+{ {C}_{out}}$$
+。
+
 具体可参见下面代码：
 
 ```python
@@ -85,46 +126,6 @@ if __name__ == '__main__':
 3600=10\*3\*6\*5\*4
 
 有bias时输出结果为3610=10\*3\*6\*5\*4+10
-
-2D卷积的计算量：
-$${ {C}_{out}}\times { {C}_{in}}\times { {H}_{k}}\times { {W}_{k}}\times \left( { {H}_{in}}-{ {H}_{k}}+1 \right)\times \left( { {W}_{in}}-{ {W}_{k}}+1 \right)$$
-
-3D卷积输出特征大小为：
-
-$${ {H}_{out}}=\left\lfloor \frac{ { {H}_{in}}+2\times padding[0]-dilation[0]\times (kernel\_size[0]-1)-1}{stride[0]}+1 \right\rfloor $$
-
-$${ {W}_{out}}=\left\lfloor \frac{ { {W}_{in}}+2\times padding[1]-dilation[1]\times (kernel\_size[1]-1)-1}{stride[1]}+1 \right\rfloor $$
-
-2D卷积能在2维空间中编码目标的空间关系。
-
-
-# P2. 3D卷积
-
-2D卷积是指在3D立方体数据上进行的2D卷积，滤波器通道数Cin和输入特征通道数Cin相同，每个卷积核只在输入特征的高、宽这两个方向上滑动。在3D卷积中，滤波器的通道数小于输入特征的通道数，因而每个卷积核可以在输入特征的通道、高、宽这3个方向上滑动，因而输出为3D数据。如下图。
-
-![2](/assets/post/2021-07-23-differentconv/2.png)
-
-假定3D卷积输入特征
-$$\left[ { {C}_{in}},{ {D}_{in}},{ {H}_{in}},{ {W}_{in}} \right]$$
-，卷积核尺寸
-$$\left[ { {C}_{out}},{ {C}_{in}},{ {D}_{k}},{ {H}_{k}},{ {W}_{k}} \right]$$
-，在具体计算时，
-$${ {C}_{out}}$$
-个
-$$\left[ { {C}_{in}},{ {D}_{k}},{ {H}_{k}},{ {W}_{k}} \right]$$
-的卷积核和输入特征进行卷积，得到
-$${ {C}_{out}}$$
-个
-$$\left[ { {D}_{out}},{ {H}_{out}},{ {W}_{out}} \right]$$
-的特征，拼接后得到
-$$\left[ { {C}_{out}},{ {D}_{out}},{ {H}_{out}},{ {W}_{out}} \right]$$
-的输出。
-
-3D卷积参数量在不考虑bias时为
-$${ {C}_{out}}\times { {C}_{in}}\times { {D}_{k}}\times { {H}_{k}}\times { {W}_{k}}$$
-；考虑bias时为
-$${ {C}_{out}}\times { {C}_{in}}\times { {D}_{k}}\times { {H}_{k}}\times { {W}_{k}}+{ {C}_{out}}$$
-。
 
 3D卷积输出特征大小为：
 
