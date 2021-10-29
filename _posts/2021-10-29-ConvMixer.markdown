@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "Patches Are All You Need?"
-date:   2021-10-28 16:00:00 +0800
+date:   2021-10-29 15:00:00 +0800
 tags: [deep learning, algorithm]
 pin: true
 math: true
