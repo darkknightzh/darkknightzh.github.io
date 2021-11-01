@@ -22,6 +22,8 @@ math: true
 
 win10上安装ubuntu 20的子系统后，在/mnt目录下，能直接访问c，d等系统盘（不过win上大小写都行，ubuntu上只有小写才能访问）。但是若电脑连接了移动硬盘，则/mnt目录下有相应盘符（如电脑移动硬盘为E，则/mnt下有e目录，但直接进去是空文件夹），需要在ubuntu子系统中挂载该盘符。
 
+说明：也可以通过下面的步骤挂载win上的虚拟光驱等设备。
+
 ① 在ubuntu中cd到/mnt目录：
 
 ```terminal
@@ -50,7 +52,7 @@ $ sudo umount /mnt/e
 
 ⑤ 如需自动挂载相应文件，可将如下命令添加到ubuntu的/etc/fstab文件内（没使用过），不要改动该文件内已有的内容。
 
-```terminal
+```text
 E: /mnt/E drvfs defaults 0 0
 ```
 
