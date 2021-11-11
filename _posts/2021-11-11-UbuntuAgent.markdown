@@ -12,7 +12,7 @@ math: true
 
 转载请注明出处：
 
-<https://darkknightzh.github.io/posts/SunloginDisconnectWin10>
+<https://darkknightzh.github.io/posts/UbuntuAgent>
 
 
 参考网址：
