@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "windows10使用向日葵访问ubuntu 20.04连接已断开"
+title:  "windows10使用向日葵访问ubuntu 20.04显示连接已断开"
 date:   2021-11-11 14:50:00 +0800
 tags: [linux]
 pin: true
@@ -8,6 +8,10 @@ math: true
 ---
 
 <style> h1 { border-bottom: none } </style>
+
+转载请注明出处：
+
+<https://darkknightzh.github.io/posts/SunloginDisconnectWin10>
 
 
 参考网址：
